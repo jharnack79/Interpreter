@@ -10,3 +10,34 @@
 ; 6. Arithmetic evaluator 
 
 (load "simpleParser.scm")
+
+(define emptyState '(()()))
+
+(define getFirst car)
+(define getRemaining cdr)
+
+(define Interpret
+  (lambda (fileName)
+    (Evaluate (parser fileName) emptyState))) 
+
+(define Evaluate
+  (lambda (lis state)
+    (cond
+      ((null? lis) state)
+      ((pair? (getRemaining lis)) (Evaluate (getRemaining lis) (SelectState (getFirst lis) state)))
+      (else (SelectState (getFirst lis) state)))))
+       
+;car gets the symbols of all the statements
+(define SelectState
+  (lambda (stmt state)
+    (cond
+      ((eq? (car stmt) 'var) (Mvar (stmt state)))
+      ((eq? (car stmt) '=) (Massign (stmt state)))
+      ((eq? (car stmt) 'if) (Mif (stmt state)))
+      ((eq? (car stmt) 'while) (Mwhile (stmt state)))
+      ((eq? (car stmt) 'return) (Mreturn (stmt state)))
+      (else (error "Unknown function")))))
+      
+
+(define Mvar 
+      
