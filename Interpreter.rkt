@@ -18,7 +18,7 @@
 (define getThird caddr)
 (define getRemaining cdr)
 (define getVars car)
-(define getValues cdr)
+(define getValues cadr)
 
 (define Interpret
   (lambda (fileName)
@@ -47,14 +47,14 @@
   (lambda (stmt state)
     (if (member (cadr stmt) (getVars state))
         (error "Variable already declared")
-        (cons (append (getVars state) (list(cadr stmt))) (list (append '(()) (cadr state)))))))
+        (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) ))))))
 
 ;Stmt format (= variableName (expression or number) )
 (define Massign
   (lambda (stmt state)
     (cond
       ((not (member (cadr stmt) (getVars state))) (error "Variable Not declared"))
-      (else (UpdateValue (getSecond stmt) (M_value (getThird stmt) state))))))
+      (else (UpdateValue (getSecond stmt) (M_value (getThird stmt) state) state)))))
 
 (define UpdateValue
   (lambda (varName newValue state)
@@ -75,6 +75,7 @@
       ((eq? '/ (operator e)) (quotient (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '% (operator e)) (remainder (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '&& (operator e)) (and (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ;((eq? '= (operator e)) (GetVarValue (operand1 e) (Massign e state)))
       ((eq? '|| (operator e)) (or (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '== (operator e)) (eq? (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '> (operator e)) (> (M_value (operand1 e) state) (M_value (operand2 e) state)))
