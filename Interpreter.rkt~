@@ -19,11 +19,6 @@
 (define getRemaining cdr)
 (define getVars car)
 (define getValues cadr)
-(define getFirstVar caar)
-(define getFirstValue caadr)
-(define getStateWithoutFirstPair
-  (lambda (state)
-    (list (cdar state) (cdadr state))))
 
 (define Interpret
   (lambda (fileName)
@@ -64,9 +59,9 @@
 (define UpdateValue
   (lambda (varName newValue state)
     (cond
-      ((eq? (getFirstVar state) varName) (list (getVars state) (cons newValue (cdadr state))))
-      (else (list (cons (getFirstVar state) (car (UpdateValue varName newValue (getStateWithoutFirstPair state))))
-                  (cons (getFirstValue state) (cadr (UpdateValue varName newValue (getStateWithoutFirstPair state)))))))))
+      ((eq? (caar state) varName) (list (car state) (cons newValue (cdadr state))))
+      (else (list (cons (caar state) (car (UpdateValue varName newValue (list (cdar state) (cdadr state)))))
+                  (cons (caadr state) (cadr (UpdateValue varName newValue (list (cdar state) (cdadr state))))))))))
 
 (define M_value
   (lambda (e state)
