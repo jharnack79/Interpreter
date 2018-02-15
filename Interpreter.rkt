@@ -54,11 +54,7 @@
   (lambda (stmt state)
     (cond
       ((not (member (cadr stmt) (getVars state))) (error "Variable Not declared"))
-      ((or (number? (getThird stmt)) (boolean? (getThird stmt))) (UpdateValue (getSecond stmt) (getThird stmt) state))
-      ((not (list? (getThird stmt))) (UpdateValue (getSecond stmt) (GetVarValue (getThird stmt)) state))
-      (else (EvaluateExpr (ReplaceVarsWithValues (getThird stmt)))))))
-
-
+      (else (UpdateValue (getSecond stmt) (M_value (getThird stmt) state))))))
 
 (define UpdateValue
   (lambda (varName newValue state)
@@ -67,38 +63,26 @@
       (else (list (cons (caar state) (car (UpdateValue varName newValue (list (cdar state) (cdadr state)))))
                   (cons (caadr state) (cadr (UpdateValue varName newValue (list (cdar state) (cdadr state))))))))))
 
-
-(define EvaluateExpr
-  (lambda (stmt state)
-    (cond
-      (
-      ((list (
-      
-
-(define ReplaceVarsWithValues
-  (lambda (stmt state)
-    (cond
-      (()))))
-
 (define M_value
-  (lambda (e)
+  (lambda (e state)
     (cond
       ((number? e) e)
       ((boolean? e) e)
-      ((eq? '+ (operator e)) (+ (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '* (operator e)) (* (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '- (operator e)) (- (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '/ (operator e)) (quotient (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '% (operator e)) (remainder (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '&& (operator e)) (and (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '|| (operator e)) (or (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '== (operator e)) (eq? (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '> (operator e)) (> (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '< (operator e)) (< (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '>= (operator e)) (>= (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '<= (operator e)) (<= (M_value (operand1 e)) (M_value (operand2 e))))
-      ((eq? '!= (operator e)) (not (eq? (M_value (operand1 e)) (M_value (operand2 e)))))
-      ((eq? '! (operator e)) (not (M_value (operand1 e))))             
+      ((not (list? e)) (GetVarValue e state))
+      ((eq? '+ (operator e)) (+ (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '* (operator e)) (* (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '- (operator e)) (- (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '/ (operator e)) (quotient (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '% (operator e)) (remainder (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '&& (operator e)) (and (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '|| (operator e)) (or (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '== (operator e)) (eq? (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '> (operator e)) (> (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '< (operator e)) (< (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '>= (operator e)) (>= (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '<= (operator e)) (<= (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '!= (operator e)) (not (eq? (M_value (operand1 e) state) (M_value (operand2 e) state))))
+      ((eq? '! (operator e)) (not (M_value (operand1 e) state)))             
       (else (error 'badop "Undefined operator")))))
 
 (define operator
