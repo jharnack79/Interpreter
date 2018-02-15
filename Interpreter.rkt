@@ -67,16 +67,51 @@
       (else (list (cons (caar state) (car (UpdateValue varName newValue (list (cdar state) (cdadr state)))))
                   (cons (caadr state) (cadr (UpdateValue varName newValue (list (cdar state) (cdadr state))))))))))
 
+
 (define EvaluateExpr
   (lambda (stmt state)
     (cond
-      (else ()))))
+      (
+      ((list (
       
 
 (define ReplaceVarsWithValues
   (lambda (stmt state)
     (cond
       (()))))
+
+(define M_value
+  (lambda (e)
+    (cond
+      ((number? e) e)
+      ((boolean? e) e)
+      ((eq? '+ (operator e)) (+ (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '* (operator e)) (* (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '- (operator e)) (- (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '/ (operator e)) (quotient (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '% (operator e)) (remainder (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '&& (operator e)) (and (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '|| (operator e)) (or (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '== (operator e)) (eq? (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '> (operator e)) (> (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '< (operator e)) (< (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '>= (operator e)) (>= (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '<= (operator e)) (<= (M_value (operand1 e)) (M_value (operand2 e))))
+      ((eq? '!= (operator e)) (not (eq? (M_value (operand1 e)) (M_value (operand2 e)))))
+      ((eq? '! (operator e)) (not (M_value (operand1 e))))             
+      (else (error 'badop "Undefined operator")))))
+
+(define operator
+  (lambda (e)
+    (car e)))
+
+(define operand1
+  (lambda (e)
+    (cadr e)))
+ 
+(define operand2
+  (lambda (e)
+    (caddr e)))
 
         
 ;Recurses by loping off the first element of the vars and vals list
