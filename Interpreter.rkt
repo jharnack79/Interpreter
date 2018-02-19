@@ -1,16 +1,11 @@
 ; Jason Harnack, Tom Pescatore, Vicki Kelly
 ; EECS 345 Interpreter Project
 
-; 1. Write a function called interpret
-; 2. Funciton thatll store the states
-; 3. Basic state evaluator
-; 4. Returning a value
-; 5. Create a parse tree
-;   - if, variable declaration, assignment, return, while
-; 6. Arithmetic evaluator 
 
 (load "simpleParser.scm")
 
+;Abstracting out our empty state
+;State Design - ((variables) (values))
 (define emptyState '(()()))
 
 (define getFirst car)
@@ -25,10 +20,12 @@
   (lambda (state)
     (list (cdar state) (cdadr state))))
 
+;Main function to take filename and begin evaluating
 (define Interpret
   (lambda (fileName)
     (Evaluate (parser fileName) emptyState))) 
 
+;Evaluates the parsed text file 
 (define Evaluate 
   (lambda (lis state)
     (cond
@@ -36,18 +33,20 @@
       ((pair? (getRemaining lis)) (Evaluate (getRemaining lis) (SelectState (getFirst lis) state)))
       (else (SelectState (getFirst lis) state)))))
        
-;car gets the symbols of all the statements
+;Handles all state expressions and evaluates them based on given operation
 (define SelectState
   (lambda (stmt state)
     (cond
-      ((eq? (car stmt) 'var) (Mvar stmt state))
-      ((eq? (car stmt) '=) (Massign stmt state))
-      ((eq? (car stmt) 'if) (Mif stmt state))
-      ((eq? (car stmt) 'while) (Mwhile stmt state))
-      ((eq? (car stmt) 'return) (Mreturn stmt state))
+      ((eq? (getFirst stmt) 'var) (Mvar stmt state))
+      ((eq? (getFirst stmt) '=) (Massign stmt state))
+      ((eq? (getFirst stmt) 'if) (Mif stmt state))
+      ((eq? (getFirst stmt) 'while) (Mwhile stmt state))
+      ((eq? (getFirst stmt) 'return) (Mreturn stmt state))
       (else (error "Unknown function")))))
       
-
+;Variable Declaration operation
+;Throws an error if the value has been declared, otherwise it will step through the state until it reaches the end
+;will then append new variable with a value of () to the current state
 (define Mvar
   (lambda (stmt state)
     (cond
@@ -56,12 +55,14 @@
       (else (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) )))))))
 
 ;Stmt format (= variableName (expression or number) )
+;Assignment operation for declared variables
 (define Massign
   (lambda (stmt state)
     (cond
       ((not (member (cadr stmt) (getVars state))) (error "Variable Not declared"))
       (else (UpdateValue (getSecond stmt) (M_value (getThird stmt) state) state)))))
 
+;Given a declared variable and a new value, the state is updated 
 (define UpdateValue
   (lambda (varName newValue state)
     (cond
@@ -69,11 +70,12 @@
       (else (list (cons (getFirstVar state) (car (UpdateValue varName newValue (getStateWithoutFirstPair state))))
                   (cons (getFirstValue state) (cadr (UpdateValue varName newValue (getStateWithoutFirstPair state)))))))))
 
+;Handles all potential arithmetic and boolean expression evaluations
 (define M_value
   (lambda (e state)
     (cond
       ((number? e) e)
-      ((boolean? e) e )
+      ((boolean? e) e)
       ((eq? 'false e) #f)
       ((eq? 'true e) #t)
       ((not (list? e)) (GetVarValue e state))
@@ -116,13 +118,17 @@
       ((eq? varName (caar state)) (if (null? (caadr state)) (error "variable not assigned") (caadr state)))
       (else (GetVarValue varName (getStateWithoutFirstPair state))))))
 
+
+;Returns the correct value when broken down to either a number, boolean, or variable
 (define Mreturn
   (lambda (stmt state)
     (cond
       ((eq? (M_value (cadr stmt) state) #t) 'True)
       ((eq? (M_value (cadr stmt) state) #f) 'False)
       (else (M_value (cadr stmt) state)))))
-  
+
+;Takes the if statement and assess the expression after it,
+;Depending on the result, it will execute either the then or else statement associated
 (define Mif
   (lambda (stmt state)
     (cond
@@ -130,6 +136,7 @@
       ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state))
       (else state))))
 
+;Takes while loop and evaluates given loop body if 
 (define Mwhile
   (lambda (stmt state)
     (cond
