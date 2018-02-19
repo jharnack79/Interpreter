@@ -1,11 +1,7 @@
 var x;
+var y;
 x = 10;
-var y = 3 * x + 5;
-if (x > y)
+if ((x = x + 1) > y)
   return x;
-else if (x * x > y)
-  return x * x;
-else if (x * (x + x) > y)
-  return x * (x + x);
 else
-  return y - 1;
+  return y;

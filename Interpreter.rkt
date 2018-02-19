@@ -29,7 +29,7 @@
   (lambda (fileName)
     (Evaluate (parser fileName) emptyState))) 
 
-(define Evaluate
+(define Evaluate 
   (lambda (lis state)
     (cond
       ((null? lis) state)
@@ -73,15 +73,18 @@
   (lambda (e state)
     (cond
       ((number? e) e)
-      ((boolean? e) e)
+      ((boolean? e) e )
+      ((eq? 'false e) #f)
+      ((eq? 'true e) #t)
       ((not (list? e)) (GetVarValue e state))
       ((eq? '+ (operator e)) (+ (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '* (operator e)) (* (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '- (operator e)) (- (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((and (pair? (cddr e)) (eq? '- (operator e))) (- (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '- (operator e)) (* -1 (M_value (operand1 e) state)))
       ((eq? '/ (operator e)) (quotient (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '% (operator e)) (remainder (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '&& (operator e)) (and (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ;((eq? '= (operator e)) (GetVarValue (operand1 e) (Massign e state)))
+      ((eq? '= (operator e)) (GetVarValue (operand1 e) (Massign e state)))
       ((eq? '|| (operator e)) (or (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '== (operator e)) (eq? (M_value (operand1 e) state) (M_value (operand2 e) state)))
       ((eq? '> (operator e)) (> (M_value (operand1 e) state) (M_value (operand2 e) state)))
@@ -115,7 +118,10 @@
 
 (define Mreturn
   (lambda (stmt state)
-    (M_value (cadr stmt) state)))
+    (cond
+      ((eq? (M_value (cadr stmt) state) #t) 'True)
+      ((eq? (M_value (cadr stmt) state) #f) 'False)
+      (else (M_value (cadr stmt) state)))))
   
 (define Mif
   (lambda (stmt state)
@@ -123,4 +129,10 @@
       ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state))
       ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state))
       (else state))))
-       
+
+(define Mwhile
+  (lambda (stmt state)
+    (cond
+      ((M_value (getSecond stmt) state) (Mwhile stmt (Evaluate (list (getThird stmt)) state)))
+      (else state))))
+      
