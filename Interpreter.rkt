@@ -50,9 +50,10 @@
 
 (define Mvar
   (lambda (stmt state)
-    (if (member (cadr stmt) (getVars state))
-        (error "Variable already declared")
-        (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) ))))))
+    (cond
+      ((member (getSecond stmt) (getVars state)) (error "Variable already declared"))
+      ((pair? (cddr stmt)) (Massign (list '= (getSecond stmt) (getThird stmt)) (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) )))))
+      (else (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) )))))))
 
 ;Stmt format (= variableName (expression or number) )
 (define Massign
@@ -110,4 +111,16 @@
     (cond
       ((not (member varName (getVars state))) (error "Variable Not Declared"))
       ((eq? varName (caar state)) (if (null? (caadr state)) (error "variable not assigned") (caadr state)))
-      (else (GetVarValue varName (list (cdar state) (cddr state)))))))
+      (else (GetVarValue varName (getStateWithoutFirstPair state))))))
+
+(define Mreturn
+  (lambda (stmt state)
+    (M_value (cadr stmt) state)))
+  
+(define Mif
+  (lambda (stmt state)
+    (cond
+      ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state))
+      ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state))
+      (else state))))
+       
