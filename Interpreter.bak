@@ -1,12 +1,146 @@
 ; Jason Harnack, Tom Pescatore, Vicki Kelly
 ; EECS 345 Interpreter Project
 
-; 1. Write a function called interpret
-; 2. Funciton thatll store the states
-; 3. Basic state evaluator
-; 4. Returning a value
-; 5. Create a parse tree
-;   - if, variable declaration, assignment, return, while
-; 6. Arithmetic evaluator 
 
 (load "simpleParser.scm")
+
+;Abstracting out our empty state
+;State Design - ((variables) (values))
+(define emptyState '(()()))
+
+(define getFirst car)
+(define getSecond cadr)
+(define getThird caddr)
+(define getRemaining cdr)
+(define getVars car)
+(define getValues cadr)
+(define getFirstVar caar)
+(define getFirstValue caadr)
+(define getStateWithoutFirstPair
+  (lambda (state)
+    (list (cdar state) (cdadr state))))
+
+;Main function to take filename and begin evaluating
+(define Interpret
+  (lambda (fileName)
+    (Evaluate (parser fileName) emptyState))) 
+
+;Evaluates the parsed text file 
+(define Evaluate 
+  (lambda (lis state)
+    (cond
+      ((null? lis) state)
+      ((pair? (getRemaining lis)) (Evaluate (getRemaining lis) (SelectState (getFirst lis) state)))
+      (else (SelectState (getFirst lis) state)))))
+       
+;Handles all state expressions and evaluates them based on given operation
+(define SelectState
+  (lambda (stmt state)
+    (cond
+      ((eq? (getFirst stmt) 'var) (Mvar stmt state))
+      ((eq? (getFirst stmt) '=) (Massign stmt state))
+      ((eq? (getFirst stmt) 'if) (Mif stmt state))
+      ((eq? (getFirst stmt) 'while) (Mwhile stmt state))
+      ((eq? (getFirst stmt) 'return) (Mreturn stmt state))
+      (else (error "Unknown function")))))
+      
+;Variable Declaration operation
+;Throws an error if the value has been declared, otherwise it will step through the state until it reaches the end
+;will then append new variable with a value of () to the current state
+(define Mvar
+  (lambda (stmt state return)
+    (cond
+      ((member (getSecond stmt) (getVars state)) (return (error "Variable already declared")))
+      ((pair? (cddr stmt)) (return (Massign (list '= (getSecond stmt) (getThird stmt)) (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) ))))))
+      (else (return (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) ))))))))
+
+;Stmt format (= variableName (expression or number) )
+;Assignment operation for declared variables
+(define Massign
+  (lambda (stmt state return)
+    (cond
+      ((not (member (cadr stmt) (getVars state))) (return (error "Variable Not declared")))
+      (else (return (UpdateValue (getSecond stmt) (M_value (getThird stmt) state) state))))))
+
+;Given a declared variable and a new value, the state is updated 
+(define UpdateValue
+  (lambda (varName newValue state)
+    (cond
+      ((eq? (getFirstVar state) varName) (list (getVars state) (cons newValue (cdadr state))))
+      (else (list (cons (getFirstVar state) (car (UpdateValue varName newValue (getStateWithoutFirstPair state))))
+                  (cons (getFirstValue state) (cadr (UpdateValue varName newValue (getStateWithoutFirstPair state)))))))))
+
+;Handles all potential arithmetic and boolean expression evaluations
+(define M_value
+  (lambda (e state)
+    (cond
+      ((number? e) e)
+      ((boolean? e) e)
+      ((eq? 'false e) #f)
+      ((eq? 'true e) #t)
+      ((not (list? e)) (GetVarValue e state))
+      ((eq? '+ (operator e)) (+ (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '* (operator e)) (* (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((and (pair? (cddr e)) (eq? '- (operator e))) (- (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '- (operator e)) (* -1 (M_value (operand1 e) state)))
+      ((eq? '/ (operator e)) (quotient (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '% (operator e)) (remainder (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '&& (operator e)) (and (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '= (operator e)) (GetVarValue (operand1 e) (Massign e state)))
+      ((eq? '|| (operator e)) (or (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '== (operator e)) (eq? (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '> (operator e)) (> (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '< (operator e)) (< (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '>= (operator e)) (>= (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '<= (operator e)) (<= (M_value (operand1 e) state) (M_value (operand2 e) state)))
+      ((eq? '!= (operator e)) (not (eq? (M_value (operand1 e) state) (M_value (operand2 e) state))))
+      ((eq? '! (operator e)) (not (M_value (operand1 e) state)))             
+      (else (error 'badop "Undefined operator")))))
+
+; helper functions to easily extract the operands and operators from a statement
+(define operator
+  (lambda (e)
+    (car e)))
+
+(define operand1
+  (lambda (e)
+    (cadr e)))
+ 
+(define operand2
+  (lambda (e)
+    (caddr e)))
+
+        
+;Recurses by loping off the first element of the vars and vals list
+(define GetVarValue
+  (lambda (varName state)
+    (cond
+      ((not (member varName (getVars state))) (error "Variable Not Declared"))
+      ((eq? varName (caar state)) (if (null? (caadr state)) (error "variable not assigned") (caadr state)))
+      (else (GetVarValue varName (getStateWithoutFirstPair state))))))
+
+
+;Returns the correct value when broken down to either a number, boolean, or variable
+(define Mreturn
+  (lambda (stmt state)
+    (cond
+      ((eq? (M_value (cadr stmt) state) #t) 'True)
+      ((eq? (M_value (cadr stmt) state) #f) 'False)
+      (else (M_value (cadr stmt) state)))))
+
+;Takes the if statement and assess the expression after it,
+;Depending on the result, it will execute either the then or else statement associated
+(define Mif
+  (lambda (stmt state)
+    (cond
+      ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state))
+      ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state))
+      (else state))))
+
+;Takes while loop and evaluates given loop body if the while condition is true
+(define Mwhile
+  (lambda (stmt state)
+    (cond
+      ((M_value (getSecond stmt) state) (Mwhile stmt (Evaluate (list (getThird stmt)) state)))
+      (else state))))
+      

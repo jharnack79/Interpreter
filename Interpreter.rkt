@@ -47,20 +47,28 @@
 ;Variable Declaration operation
 ;Throws an error if the value has been declared, otherwise it will step through the state until it reaches the end
 ;will then append new variable with a value of () to the current state
+(define Mvar-cps
+  (lambda (stmt state return)
+    (cond
+      ((member (getSecond stmt) (getVars state)) (return (error "Variable already declared")))
+      ((pair? (cddr stmt)) (return (Massign (list '= (getSecond stmt) (getThird stmt)) (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) ))))))
+      (else (return (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) ))))))))
+
 (define Mvar
   (lambda (stmt state)
-    (cond
-      ((member (getSecond stmt) (getVars state)) (error "Variable already declared"))
-      ((pair? (cddr stmt)) (Massign (list '= (getSecond stmt) (getThird stmt)) (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) )))))
-      (else (cons (append (getVars state) (list (cadr stmt))) (list (append (getValues state) '(()) )))))))
+    (Mvar-cps stmt state (lambda (v) v))))
 
 ;Stmt format (= variableName (expression or number) )
 ;Assignment operation for declared variables
+(define Massign-cps
+  (lambda (stmt state return)
+    (cond
+      ((not (member (cadr stmt) (getVars state))) (return (error "Variable Not declared")))
+      (else (return (UpdateValue (getSecond stmt) (M_value (getThird stmt) state) state))))))
+
 (define Massign
   (lambda (stmt state)
-    (cond
-      ((not (member (cadr stmt) (getVars state))) (error "Variable Not declared"))
-      (else (UpdateValue (getSecond stmt) (M_value (getThird stmt) state) state)))))
+    (Massign-cps stmt state (lambda (v) v))))
 
 ;Given a declared variable and a new value, the state is updated 
 (define UpdateValue
