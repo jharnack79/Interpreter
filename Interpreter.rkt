@@ -79,31 +79,35 @@
                   (cons (getFirstValue state) (cadr (UpdateValue varName newValue (getStateWithoutFirstPair state)))))))))
 
 ;Handles all potential arithmetic and boolean expression evaluations
+(define M_value-cps
+  (lambda (e state return)
+    (cond
+      ((number? e) (return e))
+      ((boolean? e) (return e))
+      ((eq? 'false e) (return #f))
+      ((eq? 'true e) (return #t))
+      ((not (list? e)) (return (GetVarValue e state)))
+      ((eq? '+ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (+ v1 v2)))))))
+      ((eq? '* (operator e)) ((M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (* v1 v2)))))))
+      ((and (pair? (cddr e)) (eq? '- (operator e))) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (- v1 v2)))))))
+      ((eq? '- (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (* -1 v))))
+      ((eq? '/ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (quotient v1 v2)))))))
+      ((eq? '% (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (remainder v1 v2)))))))
+      ((eq? '&& (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (and v1 v2)))))))
+      ((eq? '= (operator e)) (return (GetVarValue (operand1 e) (Massign e state))))
+      ((eq? '|| (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (or v1 v2)))))))
+      ((eq? '== (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (eq? v1 v2)))))))
+      ((eq? '> (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (> v1 v2)))))))
+      ((eq? '< (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (< v1 v2)))))))
+      ((eq? '>= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (>= v1 v2)))))))
+      ((eq? '<= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (<= v1 v2)))))))
+      ((eq? '!= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (not (eq? v1 v2))))))))
+      ((eq? '! (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (not v)))))             
+      (else (return (error 'badop "Undefined operator"))))))))
+
 (define M_value
   (lambda (e state)
-    (cond
-      ((number? e) e)
-      ((boolean? e) e)
-      ((eq? 'false e) #f)
-      ((eq? 'true e) #t)
-      ((not (list? e)) (GetVarValue e state))
-      ((eq? '+ (operator e)) (+ (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '* (operator e)) (* (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((and (pair? (cddr e)) (eq? '- (operator e))) (- (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '- (operator e)) (* -1 (M_value (operand1 e) state)))
-      ((eq? '/ (operator e)) (quotient (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '% (operator e)) (remainder (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '&& (operator e)) (and (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '= (operator e)) (GetVarValue (operand1 e) (Massign e state)))
-      ((eq? '|| (operator e)) (or (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '== (operator e)) (eq? (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '> (operator e)) (> (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '< (operator e)) (< (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '>= (operator e)) (>= (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '<= (operator e)) (<= (M_value (operand1 e) state) (M_value (operand2 e) state)))
-      ((eq? '!= (operator e)) (not (eq? (M_value (operand1 e) state) (M_value (operand2 e) state))))
-      ((eq? '! (operator e)) (not (M_value (operand1 e) state)))             
-      (else (error 'badop "Undefined operator")))))
+    (M_value-cps e state (lambda (v) v))))
 
 ; helper functions to easily extract the operands and operators from a statement
 (define operator
