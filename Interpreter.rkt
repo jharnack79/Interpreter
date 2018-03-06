@@ -123,24 +123,35 @@
 ;Returns the correct value when broken down to either a number, boolean, or variable
 (define Mreturn
   (lambda (stmt state)
+    (Mreturn-cps stmt state (lambda (v) v))))
+
+(define Mreturn-cps
+  (lambda (stmt state return)
     (cond
-      ((eq? (M_value (cadr stmt) state) #t) 'True)
-      ((eq? (M_value (cadr stmt) state) #f) 'False)
-      (else (M_value (cadr stmt) state)))))
+      ((eq? (M_value (cadr stmt) state) #t) (return 'True))
+      ((eq? (M_value (cadr stmt) state) #f) (return 'False))
+      (else (return (M_value (cadr stmt) state))))))
 
 ;Takes the if statement and assess the expression after it,
 ;Depending on the result, it will execute either the then or else statement associated
 (define Mif
   (lambda (stmt state)
+    (Mif-cps stmt state (lambda (v) v))))
+
+(define Mif-cps
+  (lambda (stmt state return)
     (cond
-      ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state))
-      ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state))
-      (else state))))
+      ((M_value (getSecond stmt) state) (return (Evaluate (list (getThird stmt)) state)))
+      ((pair? (cdddr stmt)) (return (Evaluate (list (cadddr stmt)) state)))
+      (else (return state)))))
 
 ;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile
   (lambda (stmt state)
+    (Mwhile-cps stmt state (lambda (v) v))))
+
+(define Mwhile-cps
+  (lambda (stmt state return)
     (cond
-      ((M_value (getSecond stmt) state) (Mwhile stmt (Evaluate (list (getThird stmt)) state)))
-      (else state))))
-      
+      ((M_value (getSecond stmt) state) (return (Mwhile-cps stmt (Evaluate (list (getThird stmt)) state) (lambda (v) v))))
+      (else (return state)))))

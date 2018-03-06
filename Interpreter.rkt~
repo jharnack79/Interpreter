@@ -97,6 +97,7 @@
       ((eq? '! (operator e)) (not (M_value (operand1 e) state)))             
       (else (error 'badop "Undefined operator")))))
 
+; helper functions to easily extract the operands and operators from a statement
 (define operator
   (lambda (e)
     (car e)))
@@ -136,7 +137,7 @@
       ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state))
       (else state))))
 
-;Takes while loop and evaluates given loop body if 
+;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile
   (lambda (stmt state)
     (cond
