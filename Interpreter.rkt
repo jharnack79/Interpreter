@@ -7,23 +7,16 @@
 ;Abstracting out our empty state
 ;State Design - ((variables) (values))
 (define emptyState '(()()))
+(define startingState '((() ())))
 
 (define getFirst car)
 (define getSecond cadr)
 (define getThird caddr)
-(define getRemaining cdr)
-(define getVars car)
-(define getValues cadr)
-(define getFirstVar caar)
-(define getFirstValue caadr)
-(define getStateWithoutFirstPair
-  (lambda (state)
-    (list (cdar state) (cdadr state))))
 
 ;Main function to take filename and begin evaluating
 (define Interpret
   (lambda (fileName)
-    (Evaluate (parser fileName) emptyState (lambda (v) v)))) 
+    (Evaluate (parser fileName) startingState (lambda (v) v)))) 
 
 ;Evaluates the parsed text file
 (define Evaluate 
@@ -42,7 +35,7 @@
       ((eq? (getFirst stmt) 'if) (Mif-cps stmt state return))
       ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return))
       ((eq? (getFirst stmt) 'return) (Mreturn-cps stmt state return))
-      ((eq? (getFirst stmt) 'begin) (Mbegin-cps stmt (cons emptyState state) return))
+      ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRemaining stmt) (cons emptyState state) return))
       ((eq? (getFirst stmt) 'break) (Mbreak state return))
       ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
       (else (error "Unknown function")))))
@@ -50,9 +43,9 @@
 (define Mbegin-cps
   (lambda (stmt state return)
     (cond
-      ((null? lis) (return (cdr state)))
-      ((pair? (getRemaining lis)) (SelectState (getFirst lis) state (lambda (v) (Mbegin-cps (cdr lis) v return))))
-      (else (SelectState (getFirst lis) state return)))))
+      ((null? stmt) (return (cdr state)))
+      (else (SelectState (getFirst stmt) state (lambda (v) (Mbegin-cps (getRemaining stmt) v return)))))))
+      ;(else (SelectState (getFirst lis) state return)))))
 
 (define Mbreak
   (lambda (state return)
@@ -67,24 +60,17 @@
 (define Mvar-cps ; THIS IS QUESTIONABLE RIGHT NOW - IF NOT WORKING REMOVE (CAR STATE) ON EVERYTHING
   (lambda (stmt state return)
     (cond
-      ((isItAlreadyDeclared (getSecond stmt) (getVars state)) (return (error "Variable already declared")))
-      ((pair? (cddr stmt)) (Massign-cps (list '= (getSecond stmt) (getThird stmt)) (cons (append (getVars (car state)) (list (cadr stmt))) (list (append (getValues (car state)) '(()) ))) return))
-      (else (return (cons (append (getVars (car state)) (list (cadr stmt))) (list (append (getValues (car state)) '(()) ))))))))
+      ((isVarDeclared (getSecond stmt) state) (return (error "Variable already declared")))
+      ((pair? (getThird stmt)) (Massign-cps (list '= (getSecond stmt) (getThird stmt)) (cons (append (getVarsOfLayer state)) (list (cadr stmt))) (list (append (getValuesOfLayer state) '(()) ))) return)
+      (else (return (cons (append (getVarsOfLayer state) (list (getSecond stmt))) (list (append (getValuesOfLayer state) '(())))))))))
 
-(define isItAlreadyDeclared
-  (lambda (varName state)
-    (cond
-      ((null? (car state)) #f) 
-      ((atom? (caar state)) (list? (member varName (car state))))
-      ((list? (member varName (caar state))) #t)
-      (else (isItAlreadyDeclared varName (cdr state))))))
 
 ;Stmt format (= variableName (expression or number) )
 ;Assignment operation for declared variables
 (define Massign-cps
   (lambda (stmt state return)
     (cond
-      ((not (member (cadr stmt) (getVars state))) (return (error "Variable Not declared")))
+      ((not (isVarDeclared-cps (getSecond stmt) state)) (error "Variable Not declared"))
       (else (M_value (getThird stmt) state (lambda (v) (UpdateValueState (getSecond stmt) v return)))))))
  
 
@@ -104,10 +90,10 @@
 (define UpdateValue
   (lambda (varName newValue state return)
     (cond
-      ((eq? (getFirstVar state) varName) (return (list (getVars state) (cons newValue (cdadr state)))))
+      ((eq? (getFirstVarOfLayer state) varName) (return (list (getVarsOfLayer state) (cons newValue (cdadr state)))))
       (else (UpdateValue varName newValue (getStateWithoutFirstPair state)
                          (lambda (v1) (UpdateValue varName newValue (getStateWithoutFirstPair state)
-                                                   (lamdba (v2) (return (list (cons (getFirstVar state) v1) (cons (getFirstValue state) v2)))))))))))
+                                                   (lamdba (v2) (return (list (cons (getFirstVarOfLayer state) v1) (cons (getFirstValueOfLayer state) v2)))))))))))
    
 
 ;Handles all potential arithmetic and boolean expression evaluations
@@ -166,7 +152,7 @@
 (define GetVarValue
   (lambda (varName state)
     (cond
-      ((not (member varName (getVars state))) (error "Variable Not Declared"))
+      ((not (member varName (getVarsOfLayer state))) (error "Variable Not Declared"))
       ((eq? varName (caar state)) (if (null? (caadr state)) (error "variable not assigned") (caadr state)))
       (else (GetVarValue varName (getStateWithoutFirstPair state))))))
 
@@ -197,3 +183,75 @@
     (cond
       ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state (lambda (v) (Mwhile-cps stmt v return))))
       (else (return state)))))
+
+;-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+;State functions
+
+(define getRemaining cdr)
+(define getVarsOfLayer car)
+(define getValuesOfLayer cadr)
+(define getFirstVarOfLayer caar)
+(define getFirstValueOfLayer caadr)
+
+(define getStateWithoutFirstPair
+  (lambda (state)
+    (list (cdar state) (cdadr state))))
+
+(define addLayer
+  (lambda (state)
+    (cons emptyState state)))
+
+(define getFirstLayer
+  (lambda (state)
+    (car state)))
+
+(define removeLayer
+  (lambda (state)
+    (cdr state)))
+
+(define getVarVal-cps
+  (lambda (var state return)
+    (cond
+      ((null? state) (error "Variable not declared"))
+      (else (getVarInLayer-cps var (getFirstLayer state) (lambda (exists value) (if exists
+                                                                                    (return value)
+                                                                                    (getVarVal-cps var (removeLayer state) return))))))))
+
+(define getVarInLayer-cps
+  (lambda (var layer return)
+    (cond
+      ((null? (getVarsOfLayer layer)) (return #f #f))
+      ((eq? (getFirstVarOfLayer layer) var) (if (eq? '() (getFirstValueOfLayer layer))
+                                         (error "Variable not assigned a value")
+                                         (return #t (getFirstValueOfLayer layer))))
+      (else (getVarInLayer-cps var (getStateWithoutFirstPair layer) return)))))
+
+(define isVarDeclared-cps
+  (lambda (var state return)
+    (cond
+      ((null? state) (return #f))
+      ((member var (getVarsOfLayer (getFirstLayer state))) (return #t))
+      (else (isVarDeclared-cps var (removeLayer state) return)))))
+
+(define declareVar-cps
+  (lambda (var state return)
+    (cond
+      ((isVarDeclared-cps var state return) (error "Variable already declared"))
+      (else (return (cons (addVarToLayer var (getFirstLayer state)) (removeLayer state)))))))
+
+(define addVarToLayer
+  (lambda (var layer)
+    (list (append (getVarsOfLayer layer) (list var)) (append (getValuesOfLayer layer) '(())))))
+
+(define assignVarValue-cps
+  (lambda (var val state return)
+    (cond
+      ((null? state) (error "Variable not declared"))
+      ((member var (getVarsOfLayer (getFirstLayer state))) (assignValueToVarInLayer var val (getFirstLayer state) (lambda (v) (return (cons v (removeLayer state))))))
+      (else (assignVarValue-cps var val (removeLayer state) (lambda (v) (return (cons (getFirstLayer state) v))))))))
+
+(define assignValueToVarInLayer
+  (lambda (var val layer return)
+    (cond
+      ((eq? (getFirstVarOfLayer layer) var) (return (list (getVarsOfLayer layer) (cons val (getRemaining (getValuesOfLayer layer))))))
+      (else (assignValueToVarInLayer var val (getStateWithoutFirstPair layer) (lambda (v) (return (list (cons (getFirstVarOfLayer layer) (getVarsOfLayer v)) (cons (getFirstValueOfLayer layer) (getValuesOfLayer v))))))))))
