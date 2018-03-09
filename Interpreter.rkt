@@ -40,14 +40,13 @@
       ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
       ((eq? (getFirst stmt) 'break) (Mbreak state return))
       ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
-      (else (error "Unknown function")))))
+      (else (error "Unknown function or function used in inappropriate place")))))
 
 (define Mbegin-cps
   (lambda (stmt state return break)
     (cond
-      ((null? stmt) (return (removeLayer state)))
+      ((or (null? stmt) (eq? (getFirst (getFirst stmt)) 'continue)) (return (removeLayer state)))
       (else (SelectState (getFirst stmt) state (lambda (v) (Mbegin-cps (getRest stmt) v return break)) break)))))
-      ;(else (SelectState (getFirst lis) state return)))))
 
 (define Mbreak
   (lambda (state return)
@@ -107,11 +106,6 @@
       ((eq? '! (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v) (return (not v)))))
       (else (return (error 'badop "Undefined operator"))))))
 
-
-(define M_value
-  (lambda (e state)
-    (M_value-cps e state (lambda (v) v))))
-
 ; helper functions to easily extract the operands and operators from a statement
 (define operator
   (lambda (e)
@@ -149,10 +143,9 @@
 ;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile-cps
   (lambda (stmt state return break)
-    (cond
-      ((M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
-                                                                   (Evaluate (list (getThird stmt)) state (lambda (v) (Mwhile-cps stmt v return break)) break)
-                                                                   (return state))))))))
+    (M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
+                                                                (Evaluate (list (getThird stmt)) state (lambda (v) (Mwhile-cps stmt v return break)) break)
+                                                                (return state))))))
 
 ;-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;State functions
