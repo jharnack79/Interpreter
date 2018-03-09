@@ -94,6 +94,7 @@
       ((eq? 'true e) (return #t))
       ((number? e) (return e))
       ((not (list? e)) (getVarVal-cps e state return))
+      ((member (operator e) intOperators) (M_value-cps e state return))
       ((eq? '&& (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (and v1 v2)))))))
       ((eq? '|| (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (or v1 v2)))))))
       ((eq? '== (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (eq? v1 v2)))))))
