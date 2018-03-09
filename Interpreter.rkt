@@ -41,6 +41,7 @@
       ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return break))
       ((eq? (getFirst stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
       ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
+      ((eq? (getFirst stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break))
       ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
       (else (error "Unknown function or function used in inappropriate place")))))
 
@@ -138,6 +139,30 @@
                                                                 (if (pair? (cdddr stmt))
                                                                     (Evaluate (list (cadddr stmt)) state return break)
                                                                     (return state)))))))
+(define finally-block caddr)
+(define catch-block cadr)
+(define get-stmt car)
+
+;(define Mtry
+ ; (lambda (stmt state return)
+;    ((let* ((finally (M_finally (finally-block stmt) state return))
+
+(define M_finally
+  (lambda (stmt state return break)
+    (if (null? stmt)
+        (lambda (v) v)
+        (lambda (v) (begin (SelectState (cons 'begin (get-stmt stmt)) state return break) v)))))
+
+(define M_catch
+  (lambda (stmt state return break)
+          (if (null? stmt)
+              (lambda (v) v)
+              (lambda (v) (SelectState (cons 'begin (get-stmt stmt)) state v)))))
+
+(define Mtry-cps
+  (lambda (stmt state return break)
+    (M_finally (finally-block stmt) state
+               (lambda (b) M_catch (catch-block stmt) state (lambda (b2) (SelectState (cons 'begin (get-stmt stmt)) state v break)) break) break))) 
 
 ;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile-cps
