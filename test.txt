@@ -1,0 +1,6 @@
+var x;
+x = 15;
+x = x * 4;
+if(x > 50)
+	return x;
+return 0;

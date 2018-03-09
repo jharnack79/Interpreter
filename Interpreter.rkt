@@ -17,23 +17,23 @@
 (define Interpret
   (lambda (fileName)
     (call/cc
-     (lambda (break)
-       (Evaluate (parser fileName) startingState (lambda (v) v) break)))))
+     (lambda (break throw)
+       (Evaluate (parser fileName) startingState (lambda (v) v) break throw)))))
 
 ;Evaluates the parsed text file
 (define Evaluate 
-  (lambda (lis state return break)
+  (lambda (lis state return break throw)
     (cond
       ((null? lis) (return state))
       ((and (null? (getRest state)) (or (eq? (getFirst (getFirst lis)) 'continue) (eq? (getFirst (getFirst lis)) 'break))) (error "Invalid break or continue"))
       ((eq? (getFirst (getFirst lis)) 'continue) (return state))
       ((eq? (getFirst (getFirst lis)) 'break) (return (cons 'break (removeLayer state))))
-      ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return break)) break))
-      (else (SelectState (getFirst lis) state return break)))))
+      ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return break)) break throw))
+      (else (SelectState (getFirst lis) state return break throw)))))
        
 ;Handles all state expressions and evaluates them based on given operation
 (define SelectState
-  (lambda (stmt state return break)
+  (lambda (stmt state return break throw)
     (cond
       ((eq? (getFirst stmt) 'var) (Mvar (getRest stmt) state return))
       ((eq? (getFirst stmt) '=) (Massign (getSecond stmt) (getThird stmt) state return))
@@ -41,8 +41,8 @@
       ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return break))
       ((eq? (getFirst stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
       ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
-      ((eq? (getFirst stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break))
-      ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
+      ((eq? (getFirst stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break throw))
+      ((eq? (getFirst stmt) 'throw) (throw (cadr stmt)))
       (else (error "Unknown function or function used in inappropriate place")))))
 
 (define Mbegin-cps
@@ -142,28 +142,24 @@
                                                                     (return state)))))))
 (define finally-block caddr)
 (define catch-block cadr)
+(define try-body car)
 (define get-stmt car)
 
-;(define Mtry
- ; (lambda (stmt state return)
-;    ((let* ((finally (M_finally (finally-block stmt) state return))
-
 (define M_finally
-  (lambda (stmt state return break)
-    (if (null? stmt)
-        (lambda (v) v)
-        (lambda (v) (begin (SelectState (cons 'begin (get-stmt stmt)) state return break) v)))))
+  (lambda (stmt state return break throw)
+    (SelectState (cons 'begin (get-stmt stmt)) (M_catch stmt state return break throw) return break throw)))
 
 (define M_catch
-  (lambda (stmt state return break)
-          (if (null? stmt)
-              (lambda (v) v)
-              (lambda (v) (SelectState (cons 'begin (get-stmt stmt)) state v)))))
+  (lambda (stmt state return break throw)
+    (call/cc
+     (lambda (throw)
+          (if (null? (catch-block stmt))
+              (SelectState (cons 'begin (try-body stmt)) state return break (lambda (v) (SelectState (cons 'begin (catch-block stmt) state return break throw))))
+              (SelectState (cons 'begin (try-body stmt)) state return break throw))))))
 
 (define Mtry-cps
-  (lambda (stmt state return break)
-    (M_finally (finally-block stmt) state
-               (lambda (b) M_catch (catch-block stmt) state (lambda (b2) (SelectState (cons 'begin (get-stmt stmt)) state v break)) break) break))) 
+  (lambda (stmt state return break throw)
+   (if (not (null? (finally-block stmt))) (M_finally stmt (M_catch stmt state return break throw) return break throw) (M_catch stmt state return break throw))))
 
 ;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile-cps
