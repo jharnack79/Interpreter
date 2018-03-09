@@ -25,6 +25,9 @@
   (lambda (lis state return break)
     (cond
       ((null? lis) (return state))
+      ((and (null? (getRest state)) (or (eq? (getFirst (getFirst lis)) 'continue) (eq? (getFirst (getFirst lis)) 'break))) (error "Invalid break or continue"))
+      ((eq? (getFirst (getFirst lis)) 'continue) (return state))
+      ((eq? (getFirst (getFirst lis)) 'break) (return (cons 'break (removeLayer state))))
       ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return break)) break))
       (else (SelectState (getFirst lis) state return break)))))
        
@@ -38,7 +41,6 @@
       ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return break))
       ((eq? (getFirst stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
       ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
-      ((eq? (getFirst stmt) 'break) (Mbreak state return))
       ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
       (else (error "Unknown function or function used in inappropriate place")))))
 
@@ -46,13 +48,10 @@
   (lambda (stmt state return break)
     (cond
       ((or (null? stmt) (eq? (getFirst (getFirst stmt)) 'continue)) (return (removeLayer state)))
-      (else (SelectState (getFirst stmt) state (lambda (v) (Mbegin-cps (getRest stmt) v return break)) break)))))
-
-(define Mbreak
-  (lambda (state return)
-    (cond
-      ((null? (cdr state)) (error "Cannot Break on Base Level"))
-      (else (return (cdr state))))))
+      ((eq? (getFirst (getFirst stmt)) 'break) (return (cons 'break (removeLayer state))))
+      (else (SelectState (getFirst stmt) state (lambda (v) (if (eq? (getFirst v) 'break)
+                                                               (return v)
+                                                               (Mbegin-cps (getRest stmt) v return break))) break)))))
 
 ;Variable Declaration operation
 ;varAndMaybeValue will be either (var) or (var val) depending on wether or not the variable is being assigned a value at the same time as its declaration
@@ -144,7 +143,9 @@
 (define Mwhile-cps
   (lambda (stmt state return break)
     (M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
-                                                                (Evaluate (list (getThird stmt)) state (lambda (v) (Mwhile-cps stmt v return break)) break)
+                                                                (Evaluate (list (getThird stmt)) state (lambda (v) (if (eq? (getFirst v) 'break)
+                                                                                                                       (return (removeLayer v))
+                                                                                                                       (Mwhile-cps stmt v return break))) break)
                                                                 (return state))))))
 
 ;-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
