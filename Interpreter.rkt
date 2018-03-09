@@ -76,7 +76,7 @@
   (lambda (e state return)
     (cond
       ((number? e) (return e))
-      ((not (list? e)) (getVarVal-cps e state (lambda (v) (M_value-cps v state return))))
+      ((not (list? e)) (getVarVal-cps e state return))
       ((eq? '+ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (+ v1 v2)))))))
       ((eq? '* (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (* v1 v2)))))))
       ((and (pair? (cddr e)) (eq? '- (operator e))) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (- v1 v2)))))))
@@ -90,19 +90,21 @@
 
 (define M_value_boolean-cps
   (lambda (e state return)
-    (cond ((boolean? e) (return e))
+    (cond
+      ((boolean? e) (return e))
       ((eq? 'false e) (return #f))
       ((eq? 'true e) (return #t))
-      ((not (list? e)) (getVarVal-cps e state (lambda (v) (M_value_boolean-cps v state return))))
-      ((eq? '&& (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (and v1 v2)))))))
-      ((eq? '|| (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (or v1 v2)))))))
-      ((eq? '== (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (eq? v1 v2)))))))
-      ((eq? '> (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (> v1 v2)))))))
-      ((eq? '< (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (< v1 v2)))))))
-      ((eq? '>= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (>= v1 v2)))))))
-      ((eq? '<= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (<= v1 v2)))))))
-      ((eq? '!= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (not (eq? v1 v2))))))))
-      ((eq? '! (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (not v)))))
+      ((number? e) (return e))
+      ((not (list? e)) (getVarVal-cps e state return))
+      ((eq? '&& (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (and v1 v2)))))))
+      ((eq? '|| (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (or v1 v2)))))))
+      ((eq? '== (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (eq? v1 v2)))))))
+      ((eq? '> (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (> v1 v2)))))))
+      ((eq? '< (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (< v1 v2)))))))
+      ((eq? '>= (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (>= v1 v2)))))))
+      ((eq? '<= (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (<= v1 v2)))))))
+      ((eq? '!= (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v1) (M_value_boolean-cps (operand2 e) state (lambda (v2) (return (not (eq? v1 v2))))))))
+      ((eq? '! (operator e)) (M_value_boolean-cps (operand1 e) state (lambda (v) (return (not v)))))
       (else (return (error 'badop "Undefined operator"))))))
 
 
@@ -190,8 +192,8 @@
     (cond
       ((null? (getVarsOfLayer layer)) (return #f #f))
       ((eq? (getFirstVarOfLayer layer) var) (if (eq? '() (getFirstValueOfLayer layer))
-                                         (error "Variable not assigned a value")
-                                         (return #t (getFirstValueOfLayer layer))))
+                                                (error "Variable not assigned a value")
+                                                (return #t (getFirstValueOfLayer layer))))
       (else (getVarInLayer-cps var (getStateWithoutFirstPair layer) return)))))
 
 (define isVarDeclared
