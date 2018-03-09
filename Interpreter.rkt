@@ -13,6 +13,10 @@
 (define getSecond cadr)
 (define getThird caddr)
 
+(define statementKeyword car)
+(define statementValue car)
+(define getVarName cadr)
+(define getValue caddr)
 ;Main function to take filename and begin evaluating
 (define Interpret
   (lambda (fileName)
@@ -35,21 +39,21 @@
 (define SelectState
   (lambda (stmt state return break)
     (cond
-      ((eq? (getFirst stmt) 'var) (Mvar (getRest stmt) state return))
-      ((eq? (getFirst stmt) '=) (Massign (getSecond stmt) (getThird stmt) state return))
-      ((eq? (getFirst stmt) 'if) (Mif-cps stmt state return break))
-      ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return break))
-      ((eq? (getFirst stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
-      ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
-      ((eq? (getFirst stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break))
-      ;((eq? (getFirst stmt) 'throw) (throw (cadr stmt)))
+      ((eq? (statementKeyword stmt) 'var) (Mvar (getRest stmt) state return))
+      ((eq? (statementKeyword stmt) '=) (Massign (getVarName stmt) (getValue stmt) state return))
+      ((eq? (statementKeyword stmt) 'if) (Mif-cps stmt state return break))
+      ((eq? (statementKeyword stmt) 'while) (Mwhile-cps stmt state return break))
+      ((eq? (statementKeyword stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
+      ((eq? (statementKeyword stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
+      ((eq? (statementKeyword stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break))
+      ;((eq? (statementKeywrod stmt) 'throw) (throw (cadr stmt)))
       (else (error "Unknown function or function used in inappropriate place")))))
 
 (define Mbegin-cps
   (lambda (stmt state return break)
     (cond
-      ((or (null? stmt) (eq? (getFirst (getFirst stmt)) 'continue)) (return (removeLayer state)))
-      ((eq? (getFirst (getFirst stmt)) 'break) (return (cons 'break (removeLayer state))))
+      ((or (null? stmt) (eq? (statementKeyword (getFirst stmt)) 'continue)) (return (removeLayer state)))
+      ((eq? (statementKeyword (getFirst stmt)) 'break) (return (cons 'break (removeLayer state))))
       (else (SelectState (getFirst stmt) state (lambda (v) (if (eq? (getFirst v) 'break)
                                                                (return v)
                                                                (Mbegin-cps (getRest stmt) v return break))) break)))))
@@ -124,22 +128,28 @@
 (define Mreturn-cps
   (lambda (stmt state return break)
     (cond
-      ((number? (getFirst stmt)) (break (getFirst stmt)))
-      ((eq? (getFirst stmt) #f) (break 'False))
-      ((eq? (getFirst stmt) #t) (break 'True))
-      ((not (pair? (getFirst stmt))) (getVarVal-cps (getFirst stmt) state (lambda (v) (return (break v)))))
-      ((member (getFirst (getFirst stmt)) intOperators) (M_value-cps (getFirst stmt) state (lambda (v) (return (break v)))))
-      (else (M_value_boolean-cps (getFirst stmt) state (lambda (v) (return (break v))))))))
+      ((number? (statementValue stmt)) (break (statementValue stmt)))
+      ((eq? (statementValue stmt) #f) (break 'False))
+      ((eq? (statementValue stmt) #t) (break 'True))
+      ((not (pair? (statementValue stmt))) (getVarVal-cps (getFirst stmt) state (lambda (v) (return (break v)))))
+      ((member (getFirst (statementValue stmt)) intOperators) (M_value-cps (statementValue stmt) state (lambda (v) (return (break v)))))
+      (else (M_value_boolean-cps (statementValue stmt) state (lambda (v) (return (break v))))))))
 
 ;Takes the if statement and assess the expression after it,
 ;Depending on the result, it will execute either the then or else statement associated
 (define Mif-cps
   (lambda (stmt state return break)
-    (M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
-                                                                (Evaluate (list (getThird stmt)) state return break)
-                                                                (if (pair? (cdddr stmt))
-                                                                    (Evaluate (list (cadddr stmt)) state return break)
+    (M_value_boolean-cps (conditional stmt) state (lambda (b) (if b
+                                                                (Evaluate (list (thenBlock stmt)) state return break)
+                                                                (if (pair? (elseBlock stmt))
+                                                                    (Evaluate (list (elseBlockCOntents stmt)) state return break)
                                                                     (return state)))))))
+
+(define conditional cadr)
+(define thenBlock caddr)
+(define elseBlock cdddr)
+(define elseBlockContents cadddr)
+
 (define finally-block caddr)
 (define catch-block cadr)
 (define try-body car)
@@ -164,12 +174,13 @@
 ;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile-cps
   (lambda (stmt state return break)
-    (M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
-                                                                (Evaluate (list (getThird stmt)) state (lambda (v) (if (eq? (getFirst v) 'break)
+    (M_value_boolean-cps (conditional stmt) state (lambda (b) (if b
+                                                                (Evaluate (list (body stmt)) state (lambda (v) (if (eq? (statementKeyword v) 'break)
                                                                                                                        (return (removeLayer v))
                                                                                                                        (Mwhile-cps stmt v return break))) break)
                                                                 (return state))))))
 
+(define body caddr)
 ;-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;State functions
 
