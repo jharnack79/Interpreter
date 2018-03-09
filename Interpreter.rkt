@@ -16,35 +16,37 @@
 ;Main function to take filename and begin evaluating
 (define Interpret
   (lambda (fileName)
-    (Evaluate (parser fileName) startingState (lambda (v) v)))) 
+    (call/cc
+     (lambda (break)
+       (Evaluate (parser fileName) startingState (lambda (v) v) break)))))
 
 ;Evaluates the parsed text file
 (define Evaluate 
-  (lambda (lis state return)
+  (lambda (lis state return break)
     (cond
       ((null? lis) (return state))
-      ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return))))
-      (else (SelectState (getFirst lis) state return)))))
+      ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return break)) break))
+      (else (SelectState (getFirst lis) state return break)))))
        
 ;Handles all state expressions and evaluates them based on given operation
 (define SelectState
-  (lambda (stmt state return)
+  (lambda (stmt state return break)
     (cond
       ((eq? (getFirst stmt) 'var) (Mvar (getRest stmt) state return))
       ((eq? (getFirst stmt) '=) (Massign (getSecond stmt) (getThird stmt) state return))
-      ((eq? (getFirst stmt) 'if) (Mif-cps stmt state return))
-      ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return))
-      ((eq? (getFirst stmt) 'return) (Mreturn-cps stmt state return))
-      ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return))
+      ((eq? (getFirst stmt) 'if) (Mif-cps stmt state return break))
+      ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return break))
+      ((eq? (getFirst stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
+      ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
       ((eq? (getFirst stmt) 'break) (Mbreak state return))
       ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
       (else (error "Unknown function")))))
 
 (define Mbegin-cps
-  (lambda (stmt state return)
+  (lambda (stmt state return break)
     (cond
       ((null? stmt) (return (removeLayer state)))
-      (else (SelectState (getFirst stmt) state (lambda (v) (Mbegin-cps (getRest stmt) v return)))))))
+      (else (SelectState (getFirst stmt) state (lambda (v) (Mbegin-cps (getRest stmt) v return break)) break)))))
       ;(else (SelectState (getFirst lis) state return)))))
 
 (define Mbreak
@@ -54,9 +56,7 @@
       (else (return (cdr state))))))
 
 ;Variable Declaration operation
-;Throws an error if the value has been declared, otherwise it will step through the state until it reaches the end
-;will then append new variable with a value of () to the current state
-;Need to abstract all the cars and cdrs
+;varAndMaybeValue will be either (var) or (var val) depending on wether or not the variable is being assigned a value at the same time as its declaration
 (define Mvar
   (lambda (varAndMaybeValue state return)
     (cond
@@ -76,18 +76,25 @@
   (lambda (e state return)
     (cond
       ((number? e) (return e))
-      ((boolean? e) (return e))
-      ((eq? 'false e) (return #f))
-      ((eq? 'true e) (return #t))
-      ((not (list? e)) (getVarVal-cps e state return))
+      ((not (list? e)) (getVarVal-cps e state (lambda (v) (M_value-cps v state return))))
       ((eq? '+ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (+ v1 v2)))))))
       ((eq? '* (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (* v1 v2)))))))
       ((and (pair? (cddr e)) (eq? '- (operator e))) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (- v1 v2)))))))
       ((eq? '- (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (* -1 v)))))
       ((eq? '/ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (quotient v1 v2)))))))
       ((eq? '% (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (remainder v1 v2)))))))
-      ((eq? '&& (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (and v1 v2)))))))
       ((eq? '= (operator e)) (return (GetVarValue (operand1 e) (Massign e state))))
+      (else (return (error 'badop "Undefined operator"))))))
+
+(define intOperators '(+ * - / % =))
+
+(define M_value_boolean-cps
+  (lambda (e state return)
+    (cond ((boolean? e) (return e))
+      ((eq? 'false e) (return #f))
+      ((eq? 'true e) (return #t))
+      ((not (list? e)) (getVarVal-cps e state (lambda (v) (M_value_boolean-cps v state return))))
+      ((eq? '&& (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (and v1 v2)))))))
       ((eq? '|| (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (or v1 v2)))))))
       ((eq? '== (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (eq? v1 v2)))))))
       ((eq? '> (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (> v1 v2)))))))
@@ -97,6 +104,7 @@
       ((eq? '!= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (not (eq? v1 v2))))))))
       ((eq? '! (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (not v)))))
       (else (return (error 'badop "Undefined operator"))))))
+
 
 (define M_value
   (lambda (e state)
@@ -116,32 +124,33 @@
     (caddr e)))
 
 ;Returns the correct value when broken down to either a number, boolean, or variable
-(define Mreturn
-  (lambda (stmt state)
-    (Mreturn-cps stmt state (lambda (v) v))))
-
 (define Mreturn-cps
-  (lambda (stmt state return)
+  (lambda (stmt state return break)
     (cond
-      ((eq? (M_value (cadr stmt) state) #t) (return 'True))
-      ((eq? (M_value (cadr stmt) state) #f) (return 'False))
-      (else (return (M_value (cadr stmt) state))))))
+      ((number? (getFirst stmt)) (break (getFirst stmt)))
+      ((eq? (getFirst stmt) #f) (break 'False))
+      ((eq? (getFirst stmt) #t) (break 'True))
+      ((not (pair? (getFirst stmt))) (getVarVal-cps (getFirst stmt) state (lambda (v) (return (break v)))))
+      ((member (getFirst (getFirst stmt)) intOperators) (M_value-cps (getFirst stmt) state (lambda (v) (return (break v)))))
+      (else (M_value_boolean-cps (getFirst stmt) state (lambda (v) (return (break v))))))))
 
 ;Takes the if statement and assess the expression after it,
 ;Depending on the result, it will execute either the then or else statement associated
 (define Mif-cps
-  (lambda (stmt state return)
-    (cond
-      ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state return))
-      ((pair? (cdddr stmt)) (Evaluate (list (cadddr stmt)) state return))
-      (else (return state)))))
+  (lambda (stmt state return break)
+    (M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
+                                                                (Evaluate (list (getThird stmt)) state return break)
+                                                                (if (pair? (cdddr stmt))
+                                                                    (Evaluate (list (cadddr stmt)) state return break)
+                                                                    (return state)))))))
 
 ;Takes while loop and evaluates given loop body if the while condition is true
 (define Mwhile-cps
-  (lambda (stmt state return)
+  (lambda (stmt state return break)
     (cond
-      ((M_value (getSecond stmt) state) (Evaluate (list (getThird stmt)) state (lambda (v) (Mwhile-cps stmt v return))))
-      (else (return state)))))
+      ((M_value_boolean-cps (getSecond stmt) state (lambda (b) (if b
+                                                                   (Evaluate (list (getThird stmt)) state (lambda (v) (Mwhile-cps stmt v return break)) break)
+                                                                   (return state))))))))
 
 ;-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ;State functions
