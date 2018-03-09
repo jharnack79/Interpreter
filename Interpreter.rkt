@@ -35,7 +35,7 @@
       ((eq? (getFirst stmt) 'if) (Mif-cps stmt state return))
       ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return))
       ((eq? (getFirst stmt) 'return) (Mreturn-cps stmt state return))
-      ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (cons emptyState state) return))
+      ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return))
       ((eq? (getFirst stmt) 'break) (Mbreak state return))
       ((eq? (getFirst stmt) 'throw) (return (cadr stmt)))
       (else (error "Unknown function")))))
@@ -43,7 +43,7 @@
 (define Mbegin-cps
   (lambda (stmt state return)
     (cond
-      ((null? stmt) (return (cdr state)))
+      ((null? stmt) (return (removeLayer state)))
       (else (SelectState (getFirst stmt) state (lambda (v) (Mbegin-cps (getRest stmt) v return)))))))
       ;(else (SelectState (getFirst lis) state return)))))
 
@@ -79,9 +79,9 @@
       ((boolean? e) (return e))
       ((eq? 'false e) (return #f))
       ((eq? 'true e) (return #t))
-      ((not (list? e)) (return (GetVarValue e state)))
+      ((not (list? e)) (getVarVal-cps e state return))
       ((eq? '+ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (+ v1 v2)))))))
-      ((eq? '* (operator e)) ((M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (* v1 v2)))))))
+      ((eq? '* (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (* v1 v2)))))))
       ((and (pair? (cddr e)) (eq? '- (operator e))) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (- v1 v2)))))))
       ((eq? '- (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (* -1 v)))))
       ((eq? '/ (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (quotient v1 v2)))))))
@@ -95,8 +95,8 @@
       ((eq? '>= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (>= v1 v2)))))))
       ((eq? '<= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (<= v1 v2)))))))
       ((eq? '!= (operator e)) (M_value-cps (operand1 e) state (lambda (v1) (M_value-cps (operand2 e) state (lambda (v2) (return (not (eq? v1 v2))))))))
-      ((eq? '! (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (not v)))))             
-      (else (return (error 'badop "Undefined operator")))))))
+      ((eq? '! (operator e)) (M_value-cps (operand1 e) state (lambda (v) (return (not v)))))
+      (else (return (error 'badop "Undefined operator"))))))
 
 (define M_value
   (lambda (e state)
@@ -114,22 +114,6 @@
 (define operand2
   (lambda (e)
     (caddr e)))
-
-;Helper function to iterate through each state until it finds the state that has the declared variable and its value
-(define GetVarValueState
-  (lambda (varName state)
-    (cond
-      ((or (null? (car state)) (atom? (caar state))) (GetVarValue varName state))
-      ((not (member varName (caar state))) (GetVarValueState varName (cdr state)))
-      (else (GetVarValue varName (car state))))))
-        
-;Recurses by loping off the first element of the vars and vals list
-(define GetVarValue
-  (lambda (varName state)
-    (cond
-      ((not (member varName (getVarsOfLayer state))) (error "Variable Not Declared"))
-      ((eq? varName (caar state)) (if (null? (caadr state)) (error "variable not assigned") (caadr state)))
-      (else (GetVarValue varName (getStateWithoutFirstPair state))))))
 
 ;Returns the correct value when broken down to either a number, boolean, or variable
 (define Mreturn
