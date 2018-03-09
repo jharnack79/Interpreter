@@ -17,23 +17,23 @@
 (define Interpret
   (lambda (fileName)
     (call/cc
-     (lambda (break throw)
-       (Evaluate (parser fileName) startingState (lambda (v) v) break throw)))))
+     (lambda (break)
+       (Evaluate (parser fileName) startingState (lambda (v) v) break)))))
 
 ;Evaluates the parsed text file
 (define Evaluate 
-  (lambda (lis state return break throw)
+  (lambda (lis state return break)
     (cond
       ((null? lis) (return state))
       ((and (null? (getRest state)) (or (eq? (getFirst (getFirst lis)) 'continue) (eq? (getFirst (getFirst lis)) 'break))) (error "Invalid break or continue"))
       ((eq? (getFirst (getFirst lis)) 'continue) (return state))
       ((eq? (getFirst (getFirst lis)) 'break) (return (cons 'break (removeLayer state))))
-      ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return break)) break throw))
-      (else (SelectState (getFirst lis) state return break throw)))))
+      ((pair? (getRest lis))  (SelectState (getFirst lis) state (lambda (v) (Evaluate (cdr lis) v return break)) break))
+      (else (SelectState (getFirst lis) state return break)))))
        
 ;Handles all state expressions and evaluates them based on given operation
 (define SelectState
-  (lambda (stmt state return break throw)
+  (lambda (stmt state return break)
     (cond
       ((eq? (getFirst stmt) 'var) (Mvar (getRest stmt) state return))
       ((eq? (getFirst stmt) '=) (Massign (getSecond stmt) (getThird stmt) state return))
@@ -41,8 +41,8 @@
       ((eq? (getFirst stmt) 'while) (Mwhile-cps stmt state return break))
       ((eq? (getFirst stmt) 'return) (Mreturn-cps (getRest stmt) state return break))
       ((eq? (getFirst stmt) 'begin) (Mbegin-cps (getRest stmt) (addLayer state) return break))
-      ((eq? (getFirst stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break throw))
-      ((eq? (getFirst stmt) 'throw) (throw (cadr stmt)))
+      ((eq? (getFirst stmt) 'try) (Mtry-cps (getRest stmt) (addLayer state) return break))
+      ;((eq? (getFirst stmt) 'throw) (throw (cadr stmt)))
       (else (error "Unknown function or function used in inappropriate place")))))
 
 (define Mbegin-cps
