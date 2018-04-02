@@ -20,28 +20,24 @@
 (define outer-interpret
   (lambda (file)
     (scheme->language
-     (interpret-outer-state-list (parser file) (newenvironment) (lambda (v) v)
-                            (lambda (env) env))))) 
-
-(define interpret-outer-state-list
-  (lambda (statement-list environment return next)
-    (interpret-outer-state (car statement-list) environment (lambda (v) v) (lambda (env) (interpret-outer-state-list (cdr statement-list) env return next)))))
- 
+     (interpret-outer-state (parser file) (newenviornment) (lambda (v) v)
+                            (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
+                            (lambda (v env) (myerror "Uncaught exception thrown")) (lambda (env) env)))))
 
 ; interprets a list of statements.  The state/environment from each statement is used for the next ones.
 (define interpret-statement-list
-  (lambda (statement-list environment return function-return break continue throw next)
+  (lambda (statement-list environment return function_return break continue throw next)
     (if (null? statement-list)
         (next environment)
-        (interpret-statement (car statement-list) environment return function-return break continue throw (lambda (env) (interpret-statement-list (cdr statement-list) env return function-return break continue throw next))))))
+        (interpret-statement (car statement-list) environment return break continue throw (lambda (env) (interpret-statement-list (cdr statement-list) env return break continue throw next))))))
 
 ;Handles all outer state/global assignments and functions
 (define interpret-outer-state
   (lambda (statement environment return next)
     (cond
-      ((eq? 'var (statement-type statement)) (interpret-declare statement environment next return))
+      ((eq? 'var (statement-type statement)) (interpret-declare statement environment next))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment next))
-      ((eq? 'function (statement-type statement)) (interpret-function-def statement environment next))
+      ((eq? 'function (statement-type statement)) (interpret-func-def statement environment next))
       (else (myerror "Unexpected Statement outside of functions")))))
 
 ; interpret a statement in the environment with continuations for return, break, continue, throw, and "next statement"
@@ -49,7 +45,7 @@
   (lambda (statement environment return function-return break continue throw next)
     (cond
       ((eq? 'return (statement-type statement)) (interpret-return statement environment function-return))
-      ((eq? 'var (statement-type statement)) (interpret-declare statement environment next return))
+      ((eq? 'var (statement-type statement)) (interpret-declare statement environment next))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment next))
       ((eq? 'if (statement-type statement)) (interpret-if statement environment return function-return break continue throw next))
       ((eq? 'while (statement-type statement)) (interpret-while statement environment return function-return throw next))
@@ -58,27 +54,24 @@
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return function-return break continue throw next))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return function-return break continue throw next))
-      ((eq? 'function (statement-type statement)) (interpret-func-def statement environment return next))
-      ((eq? 'funccall (statement-type statement)) (interpret-func-call statement environment return throw next))
+      ((eq? 'function (statement-type statement)) (interpret-func-def statement enviornment return next))
+      ((eq? 'funccall (statement-type statement)) (interpret-func-call statement enviornment return throw next))
       (else (myerror "Unknown statement:" (statement-type statement))))))
 
 
 ;Creating within the environment a binding of (function-name function-closure)
 (define interpret-function-def
-  (lambda (statement environment return)
-    (return (create-binding (get-function-name statement) (create-closure statement environment) environment))))
+  (lambda (statement enviornment return)
+    (return (create-binding (getFunctionName statement) (create-closure statement enviornment) environment))))
 
-(define get-function-name cadr)
+(define getFunctionName cadr)
 
 (define create-binding
-  (lambda (key val environment)
-    (cond
-      ((exists? key (topframe environment)) (cons (update-binding-layer key value (topframe environment)) (popframe environment)))
-      (else (insert key val environment)))))
+  (lambda (
 
 (define create-closure
-  (lambda (statement environment)
-    (list (caddr statement) (cadddr statement) (function-environment environment))))
+  (lambda (statement enviornment)
+    (list (caddr statement) (cadddr statement) (function-environment enviornment))))
 
 (define function-environment
   (lambda (name)
@@ -86,41 +79,18 @@
       state)))
 
 ;Mstate for calling functions
-;Ya idk
+;TODO - DOESNT WORK ATM
 (define interpret-func-call
-  (lambda (statement environment return throw next)
+  (lambda (statement envronment return throw next)
     (begin
-      (interpret-function-with-return
-       (get-function-body (get-closure (function-name expr) environment))
-       (bind-parameters (get-actual-params expr)
-                        (get-formal-params expr)
-                        (get-function-environment statement environment)
-                        environment return throw next)))))  
+      (interpret-function-with-return function-body-with-closure bind-parameters-with-new-layer-to-environment))))  
 
-(define function-name cadr)
-(define get-function-body cadr)
-(define get-actual-params caddr)
-(define get-formal-params cadddr)
-
-(define get-closure
-  (lambda (func-name environment)
-    (cond
-      ((exists? func-name (topframe environment)) (get-binding func-name environment))
-      (else (myerror "Not within scope")))))
-
-(define get-function-environment
-  (lambda (statement environment)
-    ((caddr (get-closure (function-name expr) environment)) environment)))           
-    
 (define bind-parameters
-  (lambda (acutal_params formal_params function-environment environment return throw next)
+  (lambda (acutal_params formal_params environment return throw next)
     (cond
-      ((null? actual_param) (return environment))
+      ((null? actual_param) (return enviornment))
       (else (eval-expression (car acutal_params) environment
-                             (lambda (v)
-                               (bind-parameters (cdr actual_params)
-                                                (insert (car formal_params) v function-environment) (cdr formal_params) environment)))))))
-    
+                             (lambda (v) 
 ;Creates immediate return continuation for returning in order to exit function
 (define interpret-function-with-return
   (lambda (statement environment return break continue throw next)
@@ -129,28 +99,25 @@
        (intepret-statement-list statement environment return funcReturn break continue throw next)))))
 
 ;Mvalue for function calling
+;TODO - DOESNT WORK ATM
+;OUTLINE OF FUNCTIONALITY IS WRITTEN OUT
 (define eval-func-call
   (lambda (statement environment return throw)
-    (letrec ((function-closure (get-closure (cadr expr) environment)))
+    (letrec ((get-function-closure)
     (cond
       ((eq? function-closure 'error) (myError "Undefined Function"))
-      (else (return (get-binding 'return (interpret-function-with-return
-       (get-function-body (get-closure (function-name expr) environment))
-       (bind-parameters (get-actual-params expr)
-                        (get-formal-params expr)
-                        (get-function-environment statement environment)
-                        environment return throw next)))))))))
+      (else (return (get-binding return-called-function-code)))))))) 
 
 ; Calls the return continuation with the given expression value
 (define interpret-return
   (lambda (statement environment return)
-    (return (eval-expression (get-expr statement) environment return))))
+    (return (eval-expression (get-expr statement) environment))))
 
 ; Adds a new variable binding to the environment.  There may be an assignment with the variable
 (define interpret-declare
-  (lambda (statement environment next return)
+  (lambda (statement environment next)
     (if (exists-declare-value? statement)
-        (next (insert (get-declare-var statement) (eval-expression (get-declare-value statement) environment return) environment))
+        (next (insert (get-declare-var statement) (eval-expression (get-declare-value statement) environment) environment))
         (next (insert (get-declare-var statement) 'novalue environment)))))
 
 ; Updates the environment to add a new binding for a variable
@@ -162,8 +129,8 @@
 (define interpret-if
   (lambda (statement environment return function-return break continue throw next)
     (cond
-      ((eval-expression (get-condition statement) environment) (interpret-statement (get-then statement) environment return function-return break continue throw next))
-      ((exists-else? statement) (interpret-statement (get-else statement) environment return function-return break continue throw next))
+      ((eval-expression (get-condition statement) environment) (interpret-statement (get-then statement) environment return break continue throw next))
+      ((exists-else? statement) (interpret-statement (get-else statement) environment return break continue throw next))
       (else (next environment)))))
 
 ; Interprets a while loop.  We must create break and continue continuations for this loop
@@ -171,7 +138,7 @@
   (lambda (statement environment return function-return throw next)
     (letrec ((loop (lambda (condition body environment)
                      (if (eval-expression condition environment)
-                         (interpret-statement body environment return function-return (lambda (env) (next env)) (lambda (env) (loop condition body env)) throw (lambda (env) (loop condition body env)))
+                         (interpret-statement body environment return (lambda (env) (next env)) (lambda (env) (loop condition body env)) throw (lambda (env) (loop condition body env)))
                          (next environment)))))
       (loop (get-condition statement) (get-body statement) environment))))
 
@@ -181,7 +148,6 @@
     (interpret-statement-list (cdr statement)
                                          (push-frame environment)
                                          return
-                                         function-return
                                          (lambda (env) (break (pop-frame env)))
                                          (lambda (env) (continue (pop-frame env)))
                                          (lambda (v env) (throw v (pop-frame env)))
@@ -237,41 +203,41 @@
 
 ; Evaluates all possible boolean and arithmetic expressions, including constants and variables.
 (define eval-expression
-  (lambda (expr environment return)
+  (lambda (expr environment)
     (cond
-      ((number? expr) (return expr))
-      ((eq? expr 'true) (return #t))
-      ((eq? expr 'false) (return #f))
+      ((number? expr) expr)
+      ((eq? expr 'true) #t)
+      ((eq? expr 'false) #f)
       ((not (list? expr)) (lookup expr environment))
-      (else (eval-operator expr environment return)))))
+      (else (eval-operator expr environment)))))
 
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
 ; to add side effects to the interpreter
 (define eval-operator
-  (lambda (expr environment return)
+  (lambda (expr environment)
     (cond
-      ((eq? '! (operator expr)) (not (eval-expression (operand1 expr) environment return)))
-      ((and (eq? '- (operator expr)) (= 2 (length expr))) (- (eval-expression (operand1 expr) environment return)))
-      (else (eval-binary-op2 expr (eval-expression (operand1 expr) environment return) environment return)))))
+      ((eq? '! (operator expr)) (not (eval-expression (operand1 expr) environment)))
+      ((and (eq? '- (operator expr)) (= 2 (length expr))) (- (eval-expression (operand1 expr) environment)))
+      (else (eval-binary-op2 expr (eval-expression (operand1 expr) environment) environment)))))
 
 ; Complete the evaluation of the binary operator by evaluating the second operand and performing the operation.
 (define eval-binary-op2
-  (lambda (expr op1value environment return)
+  (lambda (expr op1value environment)
     (cond
-      ((eq? '+ (operator expr)) (+ op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '- (operator expr)) (- op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '* (operator expr)) (* op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '/ (operator expr)) (quotient op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '% (operator expr)) (remainder op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '== (operator expr)) (isequal op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '!= (operator expr)) (not (isequal op1value (eval-expression (operand2 expr) environment return))))
-      ((eq? '< (operator expr)) (< op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '> (operator expr)) (> op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '<= (operator expr)) (<= op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '>= (operator expr)) (>= op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '|| (operator expr)) (or op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '&& (operator expr)) (and op1value (eval-expression (operand2 expr) environment return)))
+      ((eq? '+ (operator expr)) (+ op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '- (operator expr)) (- op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '* (operator expr)) (* op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '/ (operator expr)) (quotient op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '% (operator expr)) (remainder op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '== (operator expr)) (isequal op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '!= (operator expr)) (not (isequal op1value (eval-expression (operand2 expr) environment))))
+      ((eq? '< (operator expr)) (< op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '> (operator expr)) (> op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '<= (operator expr)) (<= op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '>= (operator expr)) (>= op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '|| (operator expr)) (or op1value (eval-expression (operand2 expr) environment)))
+      ((eq? '&& (operator expr)) (and op1value (eval-expression (operand2 expr) environment)))
       (else (myerror "Unknown operator:" (operator expr))))))
 
 ; Determines if two values are equal.  We need a special test because there are both boolean and integer types.
