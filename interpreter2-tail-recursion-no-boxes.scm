@@ -100,7 +100,7 @@
        (bind-parameters (get-actual-params statement)
                         (get-formal-params statement)
                         (get-function-environment statement environment)
-                        environment return throw next)))))  
+                        environment return throw next))))))))  
 
 (define function-name cadr)
 (define get-function-body cadr)
@@ -133,7 +133,7 @@
       (else (eval-expression (car actual_params) environment
                              (lambda (v)
                                (bind-parameters (cdr actual_params)
-                                                (insert (car formal_params) v function-environment) (cdr formal_params) environment)))))))
+                                                (insert (car formal_params) v function-environment) (cdr formal_params) environment)) throw)))))
     
 ;Creates immediate return continuation for returning in order to exit function
 (define interpret-function-with-return
@@ -251,11 +251,12 @@
 
 ; Evaluates all possible boolean and arithmetic expressions, including constants and variables.
 (define eval-expression
-  (lambda (expr environment return)
+  (lambda (expr environment return throw)
     (cond
       ((number? expr) (return expr))
       ((eq? expr 'true) (return #t))
       ((eq? expr 'false) (return #f))
+      ((eq? expr 'funccall) (eval-func-call expr environment return throw))
       ((not (list? expr)) (lookup expr environment))
       (else (eval-operator expr environment return)))))
 
@@ -263,29 +264,29 @@
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
 ; to add side effects to the interpreter
 (define eval-operator
-  (lambda (expr environment return)
+  (lambda (expr environment return throw)
     (cond
-      ((eq? '! (operator expr)) (not (eval-expression (operand1 expr) environment return)))
-      ((and (eq? '- (operator expr)) (= 2 (length expr))) (- (eval-expression (operand1 expr) environment return)))
-      (else (eval-binary-op2 expr (eval-expression (operand1 expr) environment return) environment return)))))
+      ((eq? '! (operator expr)) (not (eval-expression (operand1 expr) environment return throw)))
+      ((and (eq? '- (operator expr)) (= 2 (length expr))) (- (eval-expression (operand1 expr) environment return throw)))
+      (else (eval-binary-op2 expr (eval-expression (operand1 expr) environment return throw) environment return throw)))))
 
 ; Complete the evaluation of the binary operator by evaluating the second operand and performing the operation.
 (define eval-binary-op2
-  (lambda (expr op1value environment return)
+  (lambda (expr op1value environment return throw)
     (cond
-      ((eq? '+ (operator expr)) (+ op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '- (operator expr)) (- op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '* (operator expr)) (* op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '/ (operator expr)) (quotient op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '% (operator expr)) (remainder op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '== (operator expr)) (isequal op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '!= (operator expr)) (not (isequal op1value (eval-expression (operand2 expr) environment return))))
-      ((eq? '< (operator expr)) (< op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '> (operator expr)) (> op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '<= (operator expr)) (<= op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '>= (operator expr)) (>= op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '|| (operator expr)) (or op1value (eval-expression (operand2 expr) environment return)))
-      ((eq? '&& (operator expr)) (and op1value (eval-expression (operand2 expr) environment return)))
+      ((eq? '+ (operator expr)) (+ op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '- (operator expr)) (- op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '* (operator expr)) (* op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '/ (operator expr)) (quotient op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '% (operator expr)) (remainder op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '== (operator expr)) (isequal op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '!= (operator expr)) (not (isequal op1value (eval-expression (operand2 expr) environment return throw))))
+      ((eq? '< (operator expr)) (< op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '> (operator expr)) (> op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '<= (operator expr)) (<= op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '>= (operator expr)) (>= op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '|| (operator expr)) (or op1value (eval-expression (operand2 expr) environment return throw)))
+      ((eq? '&& (operator expr)) (and op1value (eval-expression (operand2 expr) environment return throw)))
       (else (myerror "Unknown operator:" (operator expr))))))
 
 ; Determines if two values are equal.  We need a special test because there are both boolean and integer types.
