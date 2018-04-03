@@ -13,7 +13,7 @@
 (define interpret
   (lambda (file)
     (scheme->language
-     (interpret-statement-list '(funcall main) (outer-interpret file) (lambda (v) v)
+     (interpret-statement-list '((funccall main)) (outer-interpret file) (lambda (v) v) (lambda (v) v)
                                (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
                                (lambda (v env) (myerror "Uncaught exception thrown")) (lambda (env) env)))))
 
@@ -25,9 +25,11 @@
 
 (define interpret-outer-state-list
   (lambda (statement-list environment return next)
-    (interpret-outer-state (car statement-list) environment (lambda (v) v) (lambda (env) (interpret-outer-state-list (cdr statement-list) env return next)))))
+    (if (null? statement-list)
+        (return environment)
+        (interpret-outer-state (car statement-list) environment (lambda (v) v) (lambda (env) (interpret-outer-state-list (cdr statement-list) env return next))))))
  
-
+ 
 ; interprets a list of statements.  The state/environment from each statement is used for the next ones.
 (define interpret-statement-list
   (lambda (statement-list environment return function-return break continue throw next)
@@ -73,7 +75,7 @@
 (define create-binding
   (lambda (key val environment)
     (cond
-      ((exists? key (topframe environment)) (cons (update-binding-layer key value (topframe environment)) (popframe environment)))
+      ((exists? key (list (topframe environment))) (cons (update-binding-layer key value (topframe environment)) (popframe environment)))
       (else (insert key val environment)))))
 
 (define create-closure
@@ -85,38 +87,50 @@
     (lambda (state)
       state)))
 
+(define update-binding-layer
+  (lambda (key val environment) key))
+
 ;Mstate for calling functions
 ;Ya idk
 (define interpret-func-call
   (lambda (statement environment return throw next)
     (begin
       (interpret-function-with-return
-       (get-function-body (get-closure (function-name expr) environment))
-       (bind-parameters (get-actual-params expr)
-                        (get-formal-params expr)
+       (get-function-body (get-closure (function-name statement) environment (lambda (v) (return (bind))
+       (bind-parameters (get-actual-params statement)
+                        (get-formal-params statement)
                         (get-function-environment statement environment)
                         environment return throw next)))))  
 
 (define function-name cadr)
 (define get-function-body cadr)
-(define get-actual-params caddr)
+(define get-actual-params
+  (lambda (statement)
+    (if (null? (cddr statement))
+        '()
+        (caddr statement))))
+
 (define get-formal-params cadddr)
 
 (define get-closure
-  (lambda (func-name environment)
+  (lambda (func-name environment return)
     (cond
-      ((exists? func-name (topframe environment)) (get-binding func-name environment))
+      ((exists? func-name (list (topframe environment))) (return (get-binding func-name environment)))
       (else (myerror "Not within scope")))))
 
+(define get-binding
+  (lambda (func-name environment)
+    (lookup-variable func-name environment)))
+          
 (define get-function-environment
   (lambda (statement environment)
-    ((caddr (get-closure (function-name expr) environment)) environment)))           
+    ((caddr (get-closure (function-name statement) environment)) environment)))           
     
 (define bind-parameters
-  (lambda (acutal_params formal_params function-environment environment return throw next)
+  (lambda (actual_params formal_params function-environment environment return throw next)
     (cond
-      ((null? actual_param) (return environment))
-      (else (eval-expression (car acutal_params) environment
+      ((null? actual_params) (return environment))
+      (else (eval-expression (car actual_params) environment
                              (lambda (v)
                                (bind-parameters (cdr actual_params)
                                                 (insert (car formal_params) v function-environment) (cdr formal_params) environment)))))))
@@ -131,13 +145,13 @@
 ;Mvalue for function calling
 (define eval-func-call
   (lambda (statement environment return throw)
-    (letrec ((function-closure (get-closure (cadr expr) environment)))
+    (letrec ((function-closure (get-closure (cadr statement) environment)))
     (cond
       ((eq? function-closure 'error) (myError "Undefined Function"))
       (else (return (get-binding 'return (interpret-function-with-return
-       (get-function-body (get-closure (function-name expr) environment))
-       (bind-parameters (get-actual-params expr)
-                        (get-formal-params expr)
+       (get-function-body (get-closure (function-name statement) environment))
+       (bind-parameters (get-actual-params statement)
+                        (get-formal-params statement)
                         (get-function-environment statement environment)
                         environment return throw next)))))))))
 
