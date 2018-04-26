@@ -1,7 +1,8 @@
 ; If you are using racket instead of scheme, uncomment these two lines, comment the (load "simpleParser.scm") and uncomment the (require "simpleParser.scm")
 ; #lang racket
 ; (require "simpleParser.scm")
-(load "functionParser.scm")
+;(load "functionParser.scm")
+(load "classParser.scm")
 
 ; An interpreter for the simple language using tail recursion for the M_state functions and does not handle side effects.
 
@@ -23,6 +24,16 @@
      (interpret-outer-state-list (parser file) (newenvironment) (lambda (v) v)
                                  (lambda (v env) (myerror "Inproper Use of Throw"))
                                  (lambda (env) env)))))
+
+;The main function for classes
+(define class-interpret
+  (lambda (file classname)
+    (scheme->language
+     (interpret-class-state-list (parser file) (newenvironment)))))
+
+;Interprets main function in given class
+;(define interpret-class-state-list
+ ; (lambda (statement-list environment 
 
 ;Interprets a list of statements to create global variables 
 (define interpret-outer-state-list
@@ -118,6 +129,46 @@
 (define create-closure
   (lambda (statement environment)
     (list (caddr statement) (cadddr statement) (function-environment))))
+
+;Creating the closure for the classes
+;Either will have parent class or not
+;(class Name (extends B) body)
+(define create-class-closure
+  (lambda (statement environment className) ;Do we pass in className or does it get pulled from statement?
+    (cond
+      ((null? (caddr statement))
+       (create-class-body-closure (cadddr statement)
+                                  (create-binding className new_class environment) className))
+      (else
+       (create-class-body-closure (caddr statement)
+                                  (create-binding className (cons (cadaddr statement) (cdr new_class)) environment) className)))))
+
+;New Class --> (parent, staticMethods, instanceFields instanceMethods)
+(define new_class '( null (() ()) (() ()) (() ()))  )
+
+(define create-class-body-closure
+  (lambda (statement environment className)
+    (cond
+      ((null? statement) environment)
+      ((eq? 'static-function (caar statement)) (create-static-method statement environment className))
+      ((eq? 'var (caar statement)) (create-instance-field statement enviornment className))
+      ((eq? 'function (caar statement)) (create-instance-method statement environment className))
+      (else (class_body_def (cdr body) s className)))))
+
+(define 
+(define create-instance-method
+  (lambda (statement environment className)
+    (let ((class (get-binding className environment))))
+    (cond
+      ((null? (cddr statement)) ())))))
+
+;(var x) or (var x 3)
+(define create-instance-field
+  (lambda (statement environment className)
+    (let ((class (get-binding className environment))))
+    (cond
+      ((null? (cddr statement)) (create-binding 
+                                          
 
 ;Returns the function that creates the function environment w/binding parameters
 (define function-environment
