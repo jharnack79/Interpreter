@@ -53,7 +53,7 @@
 (define interpret-outer-state
   (lambda (statement environment return throw next className)
     (cond
-      ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next))
+      ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next className))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next))
       ((eq? 'function (statement-type statement)) (interpret-function-def statement environment next))
       ((eq? 'class (statement-type statement)) (interpret-class-def statement environment return next))
@@ -63,10 +63,10 @@
 (define interpret-statement
   (lambda (statement environment return break continue throw next className)
     (cond
-      ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw next))
-      ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next))
+      ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw next className))
+      ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next className))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next))
-      ((eq? 'if (statement-type statement)) (interpret-if statement environment return break continue throw next))
+      ((eq? 'if (statement-type statement)) (interpret-if statement environment return break continue throw next className))
       ((eq? 'while (statement-type statement)) (interpret-while statement environment return throw next))
       ((eq? 'continue (statement-type statement)) (continue environment))
       ((eq? 'break (statement-type statement)) (break environment))
@@ -74,9 +74,14 @@
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment return throw next))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw next))
       ((eq? 'function (statement-type statement)) (interpret-function-def statement environment next))
-      ((eq? 'funcall (statement-type statement)) (interpret-func-call statement environment return throw next className)) 
+      ((eq? 'funcall (statement-type statement)) (interpret-func-call statement environment return throw next className))
+      ((eq? 'dot (statement-type statement)) (interpret-dot statement environmnet return throw next className))
       (else (myerror "Unknown statement:" (statement-type statement))))))
 
+(define interpret-dot
+  (lambda (statement environment return throw next className)
+    (next (create-binding 'this (get-binding (cadr statement)) environment))))
+  
 (define interpret-class-def
   (lambda (statement environment return next)
     (next (create-binding (cadr statement) (create-class-closure statement environment next (cadr statement)) environment))))
@@ -144,10 +149,10 @@
   (lambda (name closure environment)
     (update name closure environment)))
       
-;Creating the Closure ((formal parameters) (function body) (function that binds actual to formal paramters)
+;Creating the Closure ((formal parameters) (function body) (function that binds actual to formal paramters) (function that looks up funciton class)
 (define create-closure
   (lambda (statement environment)
-    (list (caddr statement) (cadddr statement) (function-environment))))
+    (list (caddr statement) (cadddr statement) (function-environment) (function-class))))
 
 ;Creating the closure for the classes
 ;Either will have parent class or not
@@ -170,7 +175,7 @@
     (cond
       ((null? statement) environment)
       ((eq? 'static-function (caar statement)) (create-static-method statement environment next className))
-      ((eq? 'var (caar statement)) (create-instance-field statement enviornment className))
+      ((eq? 'var (caar statement)) (create-instance-field statement environment className))
       ((eq? 'function (caar statement)) (create-instance-method statement environment next className))
       (else (class_body_def (cdr body) s className)))))
  
@@ -204,11 +209,20 @@
     ((lambda (f)
        (f f))
      (lambda (a)
-       (lambda (formal-params actual-params environment)
+       (lambda (formal-params actual-params environment className)
          (cond
            ((and (not (null? actual-params)) (null? formal-params)) (myerror "Inproper number of variables"))
            ((null? formal-params) environment)
+           ((eq? 'this (car formal-params)) (insert (car formal-params) (get-binding className environment)))  
            (else ((a a) (cdr formal-params) (cdr actual-params) (insert (car formal-params) (car actual-params) environment)))))))))
+
+(define function-class
+  (lambda ()
+    ((lambda (f)
+       (f f))
+     (lambda (a)
+       (lambda (environment)
+         (car (get-binding 'this environment)))))))
   
        
 (define function-name cadr)
@@ -230,26 +244,26 @@
 
 ; Calls the return continuation with the given expression value
 (define interpret-return
-  (lambda (statement environment return throw next)
-    (return (eval-expression (get-expr statement) environment return throw next))))
+  (lambda (statement environment return throw next className)
+    (return (eval-expression (get-expr statement) environment return throw next className))))
 
 ; Adds a new variable binding to the environment.  There may be an assignment with the variable
 (define interpret-declare
-  (lambda (statement environment return throw next)
+  (lambda (statement environment return throw next className)
     (if (exists-declare-value? statement)
-        (next (insert (get-declare-var statement) (eval-expression (get-declare-value statement) environment return throw next) environment))
+        (next (insert (get-declare-var statement) (eval-expression (get-declare-value statement) environment return throw next className) environment))
         (next (insert (get-declare-var statement) 'novalue environment)))))
 
 ; Updates the environment to add a new binding for a variable
 (define interpret-assign
-  (lambda (statement environment return throw next)
+  (lambda (statement environment return throw next className)
     (next (update (get-assign-lhs statement) (eval-expression (get-assign-rhs statement) environment return throw next) environment))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
 (define interpret-if
-  (lambda (statement environment return break continue throw next)
+  (lambda (statement environment return break continue throw next className)
     (cond
-      ((eval-expression (get-condition statement) environment return throw next) (interpret-statement (get-then statement) environment return break continue throw next))
+      ((eval-expression (get-condition statement) environment return throw next className) (interpret-statement (get-then statement) environment return break continue throw next))
       ((exists-else? statement) (interpret-statement (get-else statement) environment return break continue throw next))
       (else (next environment)))))
 
@@ -330,35 +344,44 @@
       ((eq? expr 'false) (return #f))
       ((not (list? expr)) (return (lookup expr environment)))
       ((eq? (car expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next className))
-      (else (eval-operator expr environment return throw next)))))
+      ((eq? (car expr) 'new) (eval-instance expr environment))
+      ((eq? (car expr) 'dot) (eval-dot expr environment return throw next className))
+      (else (eval-operator expr environment return throw next className)))))
 
+(define eval-dot
+  (lambda (statement environmnet)
+    (eval-expression ((cadddr (get-binding (caddr statement) environment)) environment)))
+
+(define eval-instance
+  (lambda (statement environment)
+    (create-instance-closure statement environment)))
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
 ; to add side effects to the interpreter
 (define eval-operator
-  (lambda (expr environment return throw next)
+  (lambda (expr environment return throw next className)
     (cond
-      ((eq? '! (operator expr)) (return (not (eval-expression (operand1 expr) environment return throw next))))
-      ((and (eq? '- (operator expr)) (= 2 (length expr))) (return (- (eval-expression (operand1 expr) environment return throw next))))
-      (else (return (eval-binary-op2 expr (eval-expression (operand1 expr) environment return throw next) environment return throw next))))))
+      ((eq? '! (operator expr)) (return (not (eval-expression (operand1 expr) environment return throw next className))))
+      ((and (eq? '- (operator expr)) (= 2 (length expr))) (return (- (eval-expression (operand1 expr) environment return throw next className))))
+      (else (return (eval-binary-op2 expr (eval-expression (operand1 expr) environment return throw next className) environment return throw next className))))))
 
 ; Complete the evaluation of the binary operator by evaluating the second operand and performing the operation.
 (define eval-binary-op2
-  (lambda (expr op1value environment return throw next)
+  (lambda (expr op1value environment return throw next className)
     (cond
-      ((eq? '+ (operator expr)) (return (+ op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '- (operator expr)) (return (- op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '* (operator expr)) (return (* op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '/ (operator expr)) (return (quotient op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '% (operator expr)) (return (remainder op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '== (operator expr)) (return (isequal op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '!= (operator expr)) (return (not (isequal op1value (eval-expression (operand2 expr) environment return throw next)))))
-      ((eq? '< (operator expr)) (return (< op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '> (operator expr)) (return (> op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '<= (operator expr)) (return (<= op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '>= (operator expr)) (return (>= op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '|| (operator expr)) (return (or op1value (eval-expression (operand2 expr) environment return throw next))))
-      ((eq? '&& (operator expr)) (return (and op1value (eval-expression (operand2 expr) environment return throw next))))
+      ((eq? '+ (operator expr)) (return (+ op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '- (operator expr)) (return (- op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '* (operator expr)) (return (* op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '/ (operator expr)) (return (quotient op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '% (operator expr)) (return (remainder op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '== (operator expr)) (return (isequal op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '!= (operator expr)) (return (not (isequal op1value (eval-expression (operand2 expr) environment return throw next className)))))
+      ((eq? '< (operator expr)) (return (< op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '> (operator expr)) (return (> op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '<= (operator expr)) (return (<= op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '>= (operator expr)) (return (>= op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '|| (operator expr)) (return (or op1value (eval-expression (operand2 expr) environment return throw next className))))
+      ((eq? '&& (operator expr)) (return (and op1value (eval-expression (operand2 expr) environment return throw next className))))
       (else (myerror "Unknown operator:" (operator expr))))))
 
 ; Determines if two values are equal.  We need a special test because there are both boolean and integer types.
