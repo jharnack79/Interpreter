@@ -19,49 +19,49 @@
 
 ;The main function for all global variables
 (define outer-interpret
-  (lambda (file)
+  (lambda (file className)
     (scheme->language
      (interpret-outer-state-list (parser file) (newenvironment) (lambda (v) v)
                                  (lambda (v env) (myerror "Inproper Use of Throw"))
-                                 (lambda (env) env)))))
+                                 (lambda (env) env) className))))
 
 ;The main function for classes
 (define class-interpret
-  (lambda (file classname)
+  (lambda (file className)
     (scheme->language
-     (interpret-class-state-list (parser file) (newenvironment)))))
-
-;Interprets main function in given class
-;(define interpret-class-state-list
- ; (lambda (statement-list environment 
+     (interpret-statement-list '((funcall main)) (outer-interpret file className) (lambda (v) v)
+                                 (lambda (v env) (myerror "Inprober use of Throw")) (lambda (env) (myerror "Continue used outside of loop"))
+                                 (lambda (v env) (myerror "Uncaught exception thrown"))
+                                 (lambda (env) env) className))))
 
 ;Interprets a list of statements to create global variables 
 (define interpret-outer-state-list
-  (lambda (statement-list environment return throw next)
+  (lambda (statement-list environment return throw next className)
     (if (null? statement-list)
         (return environment)
-        (interpret-outer-state (car statement-list) environment (lambda (v) v) throw (lambda (env) (interpret-outer-state-list (cdr statement-list) env return throw next))))))
+        (interpret-outer-state (car statement-list) environment (lambda (v) v) throw (lambda (env) (interpret-outer-state-list (cdr statement-list) env return throw next className)) className))))
 
 ; interprets a list of statements.  The state/environment from each statement is used for the next ones.
 (define interpret-statement-list
-  (lambda (statement-list environment return break continue throw next)
+  (lambda (statement-list environment return break continue throw next className)
     (if (null? statement-list)
         (next environment)
-        (interpret-statement (car statement-list) environment return break continue throw (lambda (env) (interpret-statement-list (cdr statement-list) env return break continue throw next))))))
+        (interpret-statement (car statement-list) environment return break continue throw (lambda (env) (interpret-statement-list (cdr statement-list) env return break continue throw next className)) className))))
 
 
 ;Handles all outer state/global assignments and functions
 (define interpret-outer-state
-  (lambda (statement environment return throw next)
+  (lambda (statement environment return throw next className)
     (cond
       ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next))
       ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next))
       ((eq? 'function (statement-type statement)) (interpret-function-def statement environment next))
+      ((eq? 'class (statement-type statement)) (interpret-class-def statement environment return next))
       (else (myerror "Unexpected Statement outside of functions")))))
 
 ; interpret a statement in the environment with continuations for return, break, continue, throw, and "next statement"
 (define interpret-statement
-  (lambda (statement environment return break continue throw next)
+  (lambda (statement environment return break continue throw next className)
     (cond
       ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw next))
       ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next))
@@ -74,8 +74,12 @@
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment return throw next))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw next))
       ((eq? 'function (statement-type statement)) (interpret-function-def statement environment next))
-      ((eq? 'funcall (statement-type statement)) (interpret-func-call statement environment return throw next)) 
+      ((eq? 'funcall (statement-type statement)) (interpret-func-call statement environment return throw next className)) 
       (else (myerror "Unknown statement:" (statement-type statement))))))
+
+(define interpret-class-def
+  (lambda (statement environment return next)
+    (next (create-binding (cadr statement) (create-class-closure statement environment next (cadr statement)) environment))))
 
 (define interpret-function-def
   (lambda (statement environment next)
@@ -95,23 +99,34 @@
 ;Next being passed in could potentially not be correct
 ;What should the return be at this point?
 ;Do we need to pop the frame on the continue and break continuations?
+; (null, staticMethods, instanceFields, instanceMethods)
 (define interpret-func-call
-  (lambda (statement environment return throw next)
-    (interpret-statement-list (get-function-body (get-closure (function-name statement) environment))
-                         ((get-func-environment (get-closure (function-name statement) environment))
-                          (car (get-closure (function-name statement) environment)) (actual-parameters-list (get-actual-params statement) environment return throw next) (push-frame environment))
-                         (lambda (env) (return env)) ;was (return (pop-frame env))
-                         (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
-                               throw next)))
+  (lambda (statement environment return throw next className)
+    (let ((instanceMethods (cadr (get-closure className environment))))
+      (let ((instanceFields (caddr (get-closure className environment))))
+        (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
+                                  ((get-func-environment (get-closure (function-name statement) instanceMethods))
+                                   (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment))
+                                  (lambda (env) (return env)) ;was (return (pop-frame env))
+                                  (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
+                                  throw next className)))))
 
 (define eval-func-call
-  (lambda (statement environment return throw next)
-    (return (interpret-statement-list (get-function-body (get-closure (function-name statement) environment))
-                         ((get-func-environment (get-closure (function-name statement) environment))
-                          (car (get-closure (function-name statement) environment)) (actual-parameters-list (get-actual-params statement) environment return throw next) (push-frame environment))
-                         (lambda (env) (return env))
-                         (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
-                               throw next))))
+  (lambda (statement environment return throw next className)
+    (let ((instanceMethods (cadr (get-closure className environment))))
+      (let ((instanceFields (caddr (get-closure className environment))))
+        (return (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
+                                          ((get-func-environment (get-closure (function-name statement) instanceMethods))
+                                           (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment))
+                                          (lambda (env) (return env))
+                                          (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
+                                          throw next className))))))
+;(define get-class-closure
+ ; (lambda (className environment)
+  ;  (cond
+   ;   ((exists? className environment) (get-binding className environment))
+    ;  (else (myerror "Class not within scope")))))
+
 
 ;removed return at one point, is it necessary?
 (define get-closure
@@ -124,6 +139,10 @@
 (define create-binding
   (lambda (functionName functionClosure environment)
     (insert functionName functionClosure environment)))
+
+(define update-binding
+  (lambda (name closure environment)
+    (update name closure environment)))
       
 ;Creating the Closure ((formal parameters) (function body) (function that binds actual to formal paramters)
 (define create-closure
@@ -134,41 +153,50 @@
 ;Either will have parent class or not
 ;(class Name (extends B) body)
 (define create-class-closure
-  (lambda (statement environment className) ;Do we pass in className or does it get pulled from statement?
+  (lambda (statement environment next className) ;Do we pass in className or does it get pulled from statement?
     (cond
       ((null? (caddr statement))
        (create-class-body-closure (cadddr statement)
-                                  (create-binding className new_class environment) className))
+                                  (create-binding className new_class environment) next className))
       (else
        (create-class-body-closure (caddr statement)
-                                  (create-binding className (cons (cadaddr statement) (cdr new_class)) environment) className)))))
+                                  (create-binding className (cons (cadaddr statement) (cdr new_class)) environment) next className)))))
 
 ;New Class --> (parent, staticMethods, instanceFields instanceMethods)
-(define new_class '( null (() ()) (() ()) (() ()))  )
+(define new_class '( null ((() ())) ((() ())) ((() ())))  )
 
 (define create-class-body-closure
-  (lambda (statement environment className)
+  (lambda (statement environment next className)
     (cond
       ((null? statement) environment)
-      ((eq? 'static-function (caar statement)) (create-static-method statement environment className))
+      ((eq? 'static-function (caar statement)) (create-static-method statement environment next className))
       ((eq? 'var (caar statement)) (create-instance-field statement enviornment className))
-      ((eq? 'function (caar statement)) (create-instance-method statement environment className))
+      ((eq? 'function (caar statement)) (create-instance-method statement environment next className))
       (else (class_body_def (cdr body) s className)))))
-
-(define 
+ 
 (define create-instance-method
-  (lambda (statement environment className)
-    (let ((class (get-binding className environment))))
-    (cond
-      ((null? (cddr statement)) ())))))
+  (lambda (statement environment next className)
+    (let ((class-binding (get-binding className environment)))
+    (list (car class-binding) (cadr class-binding) (caddr class-binding) (interpret-function-def statement (cadddr class-binding) next)))))
 
 ;(var x) or (var x 3)
 (define create-instance-field
   (lambda (statement environment className)
-    (let ((class (get-binding className environment))))
+    (let ((class-binding (get-binding className environment)))
     (cond
-      ((null? (cddr statement)) (create-binding 
+      ((null? (cddr statement)) (update-binding className (list (car class-binding) (cadr class-binding) (create-binding (cadr statement) 'null environment) (cadddr class-binding)) environment))
+      (else (update-binding className (list (car class-binding) (cadr class-binding) (create-binding (cadr statement) (caddr statement) environment) (cadddr class-binding)) environment))))))
                                           
+(define create-static-method
+  (lambda (statement environment next className)
+    (let ((class-binding (get-binding className environment)))
+      (list (car class-binding) (interpret-function-def (car statement) (cadr class-binding) next) (caddr class-binding) (cadddr class-binding))))) 
+
+;(new A)
+(define create-instance-closure
+  (lambda (statement environment)
+    (let ((class-binding (get-binding (cadr statement) environment)))
+    (list (cadr statement) (caddr class-binding)))))
 
 ;Returns the function that creates the function environment w/binding parameters
 (define function-environment
@@ -247,8 +275,8 @@
 
 ; We use a continuation to throw the proper value.  Because we are not using boxes, the environment/state must be thrown as well so any environment changes will be kept
 (define interpret-throw
-  (lambda (statement environment return throw next)
-    (throw (eval-expression (get-expr statement) environment return throw next) environment)))
+  (lambda (statement environment return throw next className)
+    (throw (eval-expression (get-expr statement) environment return throw next className) environment)))
 
 ; Interpret a try-catch-finally block
 
@@ -295,13 +323,13 @@
 
 ; Evaluates all possible boolean and arithmetic expressions, including constants and variables.
 (define eval-expression
-  (lambda (expr environment return throw next) ; ????????
+  (lambda (expr environment return throw next className) ; ????????
     (cond
       ((number? expr) (return expr))
       ((eq? expr 'true) (return #t))
       ((eq? expr 'false) (return #f))
       ((not (list? expr)) (return (lookup expr environment)))
-      ((eq? (car expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next))
+      ((eq? (car expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next className))
       (else (eval-operator expr environment return throw next)))))
 
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
