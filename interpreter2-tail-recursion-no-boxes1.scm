@@ -65,9 +65,9 @@
     (cond
       ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw next className))
       ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next className))
-      ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next))
+      ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next className))
       ((eq? 'if (statement-type statement)) (interpret-if statement environment return break continue throw next className))
-      ((eq? 'while (statement-type statement)) (interpret-while statement environment return throw next))
+      ((eq? 'while (statement-type statement)) (interpret-while statement environment return throw next className))
       ((eq? 'continue (statement-type statement)) (continue environment))
       ((eq? 'break (statement-type statement)) (break environment))
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw next))
@@ -111,21 +111,35 @@
       (let ((instanceFields (caddr (get-closure className environment))))
         (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
                                   ((get-func-environment (get-closure (function-name statement) instanceMethods))
-                                   (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment))
+                                   (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment) className)
                                   (lambda (env) (return env)) ;was (return (pop-frame env))
                                   (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
                                   throw next className)))))
+;(define eval-func-call
+;  (lambda (statement environment return throw next className)
+;    (let ((instanceMethods (cadr (get-closure className environment))))
+;      (let ((instanceFields (caddr (get-closure className environment))))
+;        (return (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
+ ;                                         ((get-func-environment (get-closure (function-name statement) instanceMethods))
+ ;                                          (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment))
+  ;                                        (lambda (env) (return env))
+   ;                                       (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
+    ;                                      throw next className))))))
 
 (define eval-func-call
   (lambda (statement environment return throw next className)
-    (let ((instanceMethods (cadr (get-closure className environment))))
+    (let ((instanceMethods (cadr (get-closure ((cadddr (get-closure (function-name statement) environment)) environment) environment))
       (let ((instanceFields (caddr (get-closure className environment))))
         (return (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
                                           ((get-func-environment (get-closure (function-name statement) instanceMethods))
                                            (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment))
                                           (lambda (env) (return env))
                                           (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
-                                          throw next className))))))
+                                          throw next className))))))))
+
+(define eval-left-side-dot
+  (lambda (statement environment return throw next className)
+    (get-binding (cadr statment) environment)))
 ;(define get-class-closure
  ; (lambda (className environment)
   ;  (cond
@@ -225,7 +239,10 @@
          (car (get-binding 'this environment)))))))
   
        
-(define function-name cadr)
+(define function-name
+  (lambda (statement)
+    (cond
+      ((list? (cadr statement)) (eval-dot (cadr statement)
 (define get-func-environment caddr)
 (define get-function-params car)
 (define get-function-body cadr)
@@ -257,22 +274,22 @@
 ; Updates the environment to add a new binding for a variable
 (define interpret-assign
   (lambda (statement environment return throw next className)
-    (next (update (get-assign-lhs statement) (eval-expression (get-assign-rhs statement) environment return throw next) environment))))
+    (next (update (get-assign-lhs statement) (eval-expression (get-assign-rhs statement) environment return throw next className) environment))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
 (define interpret-if
   (lambda (statement environment return break continue throw next className)
     (cond
-      ((eval-expression (get-condition statement) environment return throw next className) (interpret-statement (get-then statement) environment return break continue throw next))
-      ((exists-else? statement) (interpret-statement (get-else statement) environment return break continue throw next))
+      ((eval-expression (get-condition statement) environment return throw next className) (interpret-statement (get-then statement) environment return break continue throw next className))
+      ((exists-else? statement) (interpret-statement (get-else statement) environment return break continue throw next className))
       (else (next environment)))))
 
 ; Interprets a while loop.  We must create break and continue continuations for this loop
 (define interpret-while
-  (lambda (statement environment return throw next)
+  (lambda (statement environment return throw next className)
     (letrec ((loop (lambda (condition body environment)
-                     (if (eval-expression condition environment return throw next)
-                         (interpret-statement body environment return (lambda (env) (next env)) (lambda (env) (loop condition body env)) throw (lambda (env) (loop condition body env)))
+                     (if (eval-expression condition environment return throw next className)
+                         (interpret-statement body environment return (lambda (env) (next env)) (lambda (env) (loop condition body env)) throw (lambda (env) (loop condition body env)) className)
                          (next environment)))))
       (loop (get-condition statement) (get-body statement) environment))))
 
@@ -350,7 +367,7 @@
 
 (define eval-dot
   (lambda (statement environmnet)
-    (eval-expression ((cadddr (get-binding (caddr statement) environment)) environment)))
+    (eval-expression ((cadddr (get-binding (caddr statement) environment)) environment))))
 
 (define eval-instance
   (lambda (statement environment)
