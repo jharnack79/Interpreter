@@ -179,8 +179,9 @@
                                   (create-binding className new_class environment) next className))
       (else
        (create-class-body-closure (caddr statement)
-                                  (create-binding className (cons (cadaddr statement) (cdr new_class)) environment) next className)))))
+                                  (create-binding className (cons (cadaddr statement) (new-class-without-parent new_class)) environment) next className)))))
 
+(define new-class-without-parent)
 ;New Class --> (parent, staticMethods, instanceFields instanceMethods)
 (define new_class '( null ((() ())) ((() ())) ((() ())))  )
 
@@ -191,25 +192,37 @@
       ((eq? 'static-function (caar statement)) (create-static-method statement environment next className))
       ((eq? 'var (caar statement)) (create-instance-field statement environment className))
       ((eq? 'function (caar statement)) (create-instance-method statement environment next className))
-      (else (class_body_def (cdr body) s className)))))
+      (else (class_body_def (get-class-body body) s className)))))
+
+(define get-class-body cdr)
+(define class-statement-type caar)
  
 (define create-instance-method
   (lambda (statement environment next className)
     (let ((class-binding (get-binding className environment)))
-    (list (car class-binding) (cadr class-binding) (caddr class-binding) (interpret-function-def statement (cadddr class-binding) next)))))
+    (list (parentClassName class-binding) (staticMethods class-binding) (instanceFields class-binding) (interpret-function-def statement (instanceMethods class-binding) next)))))
+
+(define parentClassName car)
+(define staticMethods cadr)
+(define instanceFields caddr)
+(define instanceMethods caddr)
 
 ;(var x) or (var x 3)
 (define create-instance-field
   (lambda (statement environment className)
     (let ((class-binding (get-binding className environment)))
     (cond
-      ((null? (cddr statement)) (update-binding className (list (car class-binding) (cadr class-binding) (create-binding (cadr statement) 'null environment) (cadddr class-binding)) environment))
-      (else (update-binding className (list (car class-binding) (cadr class-binding) (create-binding (cadr statement) (caddr statement) environment) (cadddr class-binding)) environment))))))
+      ((null? (cddr statement))
+       (update-binding className
+                       (list (parentClassName class-binding) (staticMethods class-binding) (create-binding (cadr statement) 'null environment) (instanceFields class-binding)) environment))
+      (else (update-binding className (list (parentClassname class-binding) (staticMethods class-binding) (create-binding (cadr statement) (caddr statement) environment) (cadddr class-binding)) environment))))))
                                           
 (define create-static-method
   (lambda (statement environment next className)
     (let ((class-binding (get-binding className environment)))
-      (list (car class-binding) (interpret-function-def (car statement) (cadr class-binding) next) (caddr class-binding) (cadddr class-binding))))) 
+      (list (parentClassName class-binding) (interpret-function-def (get-function statement) (staticMethods class-binding) next) (instanceFields class-binding) (instanceMethods class-binding))))) 
+
+(define get-function car)
 
 ;(new A)
 (define create-instance-closure
@@ -360,10 +373,12 @@
       ((eq? expr 'true) (return #t))
       ((eq? expr 'false) (return #f))
       ((not (list? expr)) (return (lookup expr environment)))
-      ((eq? (car expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next className))
-      ((eq? (car expr) 'new) (eval-instance expr environment))
-      ((eq? (car expr) 'dot) (eval-dot expr environment return throw next className))
+      ((eq? (expression-type expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next className))
+      ((eq? (expression-type expr) 'new) (eval-instance expr environment))
+      ((eq? (expression-type expr) 'dot) (eval-dot expr environment return throw next className))
       (else (eval-operator expr environment return throw next className)))))
+
+(define expression-type car)
 
 (define eval-dot
   (lambda (statement environmnet)
