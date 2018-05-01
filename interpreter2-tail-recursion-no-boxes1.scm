@@ -215,7 +215,8 @@
       ((null? (cddr statement))
        (update-binding className
                        (list (parentClassName class-binding) (staticMethods class-binding) (create-binding (cadr statement) 'null environment) (instanceFields class-binding)) environment))
-      (else (update-binding className (list (parentClassname class-binding) (staticMethods class-binding) (create-binding (cadr statement) (caddr statement) environment) (cadddr class-binding)) environment))))))
+      (else
+       (update-binding className (list (parentClassname class-binding) (staticMethods class-binding) (create-binding (cadr statement) (instanceFields statement) environment) (instanceMethods class-binding)) environment))))))
                                           
 (define create-static-method
   (lambda (statement environment next className)
