@@ -3,12 +3,8 @@ class A {
 	var x = 10;
 	var y = 20;
 	if (x < y && (x % 2) == 0)
-	  return f();
-	else
-	  return f();
-	}
-	
-	function f(){
-	 return 300;
-	 }
+	  return 100;
+	else 
+		return 200;
+		}
 }

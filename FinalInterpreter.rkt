@@ -65,9 +65,9 @@
     (cond
       ((eq? 'return (statement-type statement)) (interpret-return statement environment return throw next className))
       ((eq? 'var (statement-type statement)) (interpret-declare statement environment return throw next className))
-      ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next className))
+      ((eq? '= (statement-type statement)) (interpret-assign statement environment return throw next))
       ((eq? 'if (statement-type statement)) (interpret-if statement environment return break continue throw next className))
-      ((eq? 'while (statement-type statement)) (interpret-while statement environment return throw next className))
+      ((eq? 'while (statement-type statement)) (interpret-while statement environment return throw next))
       ((eq? 'continue (statement-type statement)) (continue environment))
       ((eq? 'break (statement-type statement)) (break environment))
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw next))
@@ -115,20 +115,10 @@
                                   (lambda (env) (return env)) ;was (return (pop-frame env))
                                   (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
                                   throw next className)))))
-;(define eval-func-call
-;  (lambda (statement environment return throw next className)
-;    (let ((instanceMethods (cadr (get-closure className environment))))
-;      (let ((instanceFields (caddr (get-closure className environment))))
-;        (return (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
- ;                                         ((get-func-environment (get-closure (function-name statement) instanceMethods))
- ;                                          (car (get-closure (function-name statement) instanceMethods)) (actual-parameters-list (get-actual-params statement) instanceFields return throw next) (push-frame environment))
-  ;                                        (lambda (env) (return env))
-   ;                                       (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
-    ;                                      throw next className))))))
 
 (define eval-func-call
   (lambda (statement environment return throw next className)
-    (let ((instanceMethods (cadr (get-closure ((cadddr (get-closure (function-name statement) environment)) environment) environment))))
+    (let ((instanceMethods (cadr (get-closure className environment))))
       (let ((instanceFields (caddr (get-closure className environment))))
         (return (interpret-statement-list (get-function-body (get-closure (function-name statement) instanceMethods))
                                           ((get-func-environment (get-closure (function-name statement) instanceMethods))
@@ -136,10 +126,6 @@
                                           (lambda (env) (return env))
                                           (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
                                           throw next className))))))
-
-(define eval-left-side-dot
-  (lambda (statement environment return throw next className)
-    (get-binding (cadr statment) environment)))
 ;(define get-class-closure
  ; (lambda (className environment)
   ;  (cond
@@ -166,7 +152,7 @@
 ;Creating the Closure ((formal parameters) (function body) (function that binds actual to formal paramters) (function that looks up funciton class)
 (define create-closure
   (lambda (statement environment)
-    (list (caddr statement) (cadddr statement) (function-environment) (function-class))))
+    (list (caddr statement) (cadddr statement) (function-environment))))
 
 ;Creating the closure for the classes
 ;Either will have parent class or not
@@ -179,9 +165,8 @@
                                   (create-binding className new_class environment) next className))
       (else
        (create-class-body-closure (caddr statement)
-                                  (create-binding className (cons (cadaddr statement) (new-class-without-parent new_class)) environment) next className)))))
+                                  (create-binding className (cons (cadaddr statement) (cdr new_class)) environment) next className)))))
 
-(define new-class-without-parent cdr)
 ;New Class --> (parent, staticMethods, instanceFields instanceMethods)
 (define new_class '( null ((() ())) ((() ())) ((() ())))  )
 
@@ -192,37 +177,25 @@
       ((eq? 'static-function (caar statement)) (create-static-method statement environment next className))
       ((eq? 'var (caar statement)) (create-instance-field statement environment className))
       ((eq? 'function (caar statement)) (create-instance-method statement environment next className))
-      (else (class_body_def (get-class-body body) s className)))))
-
-(define get-class-body cdr)
-(define class-statement-type caar)
+      (else (class_body_def (cdr body) s className)))))
  
 (define create-instance-method
   (lambda (statement environment next className)
     (let ((class-binding (get-binding className environment)))
-    (list (parentClassName class-binding) (staticMethods class-binding) (instanceFields class-binding) (interpret-function-def statement (instanceMethods class-binding) next)))))
-
-(define parentClassName car)
-(define staticMethods cadr)
-(define instanceFields caddr)
-(define instanceMethods caddr)
+    (list (car class-binding) (cadr class-binding) (caddr class-binding) (interpret-function-def statement (cadddr class-binding) next)))))
 
 ;(var x) or (var x 3)
 (define create-instance-field
   (lambda (statement environment className)
     (let ((class-binding (get-binding className environment)))
     (cond
-      ((null? (cddr statement))
-       (update-binding className
-                       (list (parentClassName class-binding) (staticMethods class-binding) (create-binding (cadr statement) 'null environment) (instanceFields class-binding)) environment))
-      (else (update-binding className (list (parentClassname class-binding) (staticMethods class-binding) (create-binding (cadr statement) (caddr statement) environment) (cadddr class-binding)) environment))))))
+      ((null? (cddr statement)) (update-binding className (list (car class-binding) (cadr class-binding) (create-binding (cadr statement) 'null environment) (cadddr class-binding)) environment))
+      (else (update-binding className (list (car class-binding) (cadr class-binding) (create-binding (cadr statement) (caddr statement) environment) (cadddr class-binding)) environment))))))
                                           
 (define create-static-method
   (lambda (statement environment next className)
     (let ((class-binding (get-binding className environment)))
-      (list (parentClassName class-binding) (interpret-function-def (get-function statement) (staticMethods class-binding) next) (instanceFields class-binding) (instanceMethods class-binding))))) 
-
-(define get-function car)
+      (list (car class-binding) (interpret-function-def (car statement) (cadr class-binding) next) (caddr class-binding) (cadddr class-binding))))) 
 
 ;(new A)
 (define create-instance-closure
@@ -252,11 +225,7 @@
          (car (get-binding 'this environment)))))))
   
        
-(define function-name
-  (lambda (statement)
-    (cond
-      ((list? (cadr statement)) (eval-dot (cadr statement))))))
-
+(define function-name cadr)
 (define get-func-environment caddr)
 (define get-function-params car)
 (define get-function-body cadr)
@@ -288,22 +257,22 @@
 ; Updates the environment to add a new binding for a variable
 (define interpret-assign
   (lambda (statement environment return throw next className)
-    (next (update (get-assign-lhs statement) (eval-expression (get-assign-rhs statement) environment return throw next className) environment))))
+    (next (update (get-assign-lhs statement) (eval-expression (get-assign-rhs statement) environment return throw next) environment))))
 
 ; We need to check if there is an else condition.  Otherwise, we evaluate the expression and do the right thing.
 (define interpret-if
   (lambda (statement environment return break continue throw next className)
     (cond
       ((eval-expression (get-condition statement) environment return throw next className) (interpret-statement (get-then statement) environment return break continue throw next className))
-      ((exists-else? statement) (interpret-statement (get-else statement) environment return break continue throw next className))
+      ((exists-else? statement) (interpret-statement (get-else statement) environment return break continue throw next))
       (else (next environment)))))
 
 ; Interprets a while loop.  We must create break and continue continuations for this loop
 (define interpret-while
-  (lambda (statement environment return throw next className)
+  (lambda (statement environment return throw next)
     (letrec ((loop (lambda (condition body environment)
-                     (if (eval-expression condition environment return throw next className)
-                         (interpret-statement body environment return (lambda (env) (next env)) (lambda (env) (loop condition body env)) throw (lambda (env) (loop condition body env)) className)
+                     (if (eval-expression condition environment return throw next)
+                         (interpret-statement body environment return (lambda (env) (next env)) (lambda (env) (loop condition body env)) throw (lambda (env) (loop condition body env)))
                          (next environment)))))
       (loop (get-condition statement) (get-body statement) environment))))
 
@@ -374,12 +343,10 @@
       ((eq? expr 'true) (return #t))
       ((eq? expr 'false) (return #f))
       ((not (list? expr)) (return (lookup expr environment)))
-      ((eq? (expression-type expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next className))
-      ((eq? (expression-type expr) 'new) (eval-instance expr environment))
-      ((eq? (expression-type expr) 'dot) (eval-dot expr environment return throw next className))
+      ((eq? (car expr) 'funcall) (eval-func-call expr environment (lambda (v) (return v)) throw next className))
+      ((eq? (car expr) 'new) (eval-instance expr environment))
+      ((eq? (car expr) 'dot) (eval-dot expr environment return throw next className))
       (else (eval-operator expr environment return throw next className)))))
-
-(define expression-type car)
 
 (define eval-dot
   (lambda (statement environmnet)
@@ -628,4 +595,3 @@
                             str
                             (makestr (string-append str (string-append " " (symbol->string (car vals)))) (cdr vals))))))
       (error-break (display (string-append str (makestr "" vals)))))))
-
